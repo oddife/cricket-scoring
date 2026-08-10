@@ -15,66 +15,45 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Patch bowler state and display
-        shell: python
+      - name: Patch source
+        shell: bash
         run: |
+          python3 <<'PY'
           from pathlib import Path
 
           page = Path('src/app/page.tsx')
           text = page.read_text(encoding='utf-8-sig')
 
-          old = '''    const battingTeam = selectedTournament?.teams.find(
+          replacements = [
+            ('''    const battingTeam = selectedTournament?.teams.find(
       (team) => team.team.id === teamAId,
     );
     const bowlingTeam = selectedTournament?.teams.find(
       (team) => team.team.id === teamBId,
-    );'''
-          new = '''    const battingTeam = selectedTournament?.teams.find(
+    );''', '''    const battingTeam = selectedTournament?.teams.find(
       (team) => team.team.id === liveBattingTeamId,
     );
     const bowlingTeam = selectedTournament?.teams.find(
       (team) => team.team.id === liveBowlingTeamId,
-    );'''
-          if old not in text:
-              raise SystemExit('Expected LiveScoring team lookup was not found')
-          text = text.replace(old, new, 1)
-
-          old = '''    const activeBowlerA = teamBPlayers.find(
+    );'''),
+            ('''    const activeBowlerA = teamBPlayers.find(
       (player) => player.id === liveBowlerAId,
     );
     const activeBowlerB = teamBPlayers.find(
       (player) => player.id === liveBowlerBId,
-    );'''
-          new = '''    const activeBowlerA = liveBowlingPlayers.find(
+    );''', '''    const activeBowlerA = liveBowlingPlayers.find(
       (player) => player.id === liveBowlerAId,
     );
     const activeBowlerB = liveBowlingPlayers.find(
       (player) => player.id === liveBowlerBId,
-    );'''
-          if old not in text:
-              raise SystemExit('Expected active bowler lookup was not found')
-          text = text.replace(old, new, 1)
-
-          old = 'won Â· elected to ${tossDecision === "BAT" ? "bat" : "bowl"}'
-          text = text.replace(old, 'won · elected to ${tossDecision === "BAT" ? "bat" : "bowl"}', 1)
-          text = text.replace('>â€¢<', '>•<')
-          text = text.replace(' â€¢ ', ' • ')
-
-          old = '''      const refreshedBowlerAId = innings.currentBowlerAId ?? "";
-      const refreshedBowlerBId = innings.currentBowlerBId ?? "";'''
-          new = '''      const refreshedBowlerAId = innings.currentBowlerAId ?? "";
-      const refreshedBowlerBId =
-        innings.currentBowlerBId ??
-        (refreshedOverDeliveries.length > 0 ? liveBowlerBId : "");'''
-          # This block depends on refreshedOverDeliveries, so patch the whole calculation below instead.
-          old_block = '''      const refreshedBowlerAId = innings.currentBowlerAId ?? "";
+    );'''),
+            ('''      const refreshedBowlerAId = innings.currentBowlerAId ?? "";
       const refreshedBowlerBId = innings.currentBowlerBId ?? "";
       const refreshedOverNumber = Math.floor(Number(innings.legalBalls ?? 0) / 6) + 1;
       const refreshedOverDeliveries = deliveries.filter(
         (delivery: LiveDeliveryView) =>
           delivery.overNumber === refreshedOverNumber,
-      );'''
-          new_block = '''      const refreshedOverNumber = Math.floor(Number(innings.legalBalls ?? 0) / 6) + 1;
+      );''', '''      const refreshedOverNumber = Math.floor(Number(innings.legalBalls ?? 0) / 6) + 1;
       const refreshedOverDeliveries = deliveries.filter(
         (delivery: LiveDeliveryView) =>
           delivery.overNumber === refreshedOverNumber,
@@ -82,11 +61,17 @@ jobs:
       const refreshedBowlerAId = innings.currentBowlerAId ?? "";
       const refreshedBowlerBId =
         innings.currentBowlerBId ??
-        (refreshedOverDeliveries.length > 0 ? liveBowlerBId : "");'''
-          if old_block not in text:
-              raise SystemExit('Expected refresh bowler block was not found')
-          text = text.replace(old_block, new_block, 1)
+        (refreshedOverDeliveries.length > 0 ? liveBowlerBId : "");'''),
+          ]
 
+          for old, new in replacements:
+              if old not in text:
+                  raise SystemExit('Expected page.tsx block not found')
+              text = text.replace(old, new, 1)
+
+          text = text.replace('won Â· elected to ${tossDecision === "BAT" ? "bat" : "bowl"}', 'won · elected to ${tossDecision === "BAT" ? "bat" : "bowl"}')
+          text = text.replace('â€¢', '•')
+          text = text.replace('Â·', '·')
           page.write_text(text, encoding='utf-8')
 
           scoring = Path('src/lib/scoring.ts')
@@ -110,15 +95,10 @@ jobs:
             ? null
             : innings.currentBowlerBId ?? currentOverSecondBowler;'''
           if old not in text:
-              raise SystemExit('Expected scoring bowler state block was not found')
+              raise SystemExit('Expected scoring.ts block not found')
           text = text.replace(old, new, 1)
           scoring.write_text(text, encoding='utf-8')
-
-          # Mark the repair in the source so it is obvious and idempotent.
-          marker = 'One-time bowler state repair'
-          if marker not in text:
-              text = text.replace('export async function', '// One-time bowler state repair: keep the active pair synchronized when a new pair starts.\n\nexport async function', 1) if 'export async function' in text else text
-              scoring.write_text(text, encoding='utf-8')
+          PY
 
       - name: Commit repair and remove workflow
         shell: bash
