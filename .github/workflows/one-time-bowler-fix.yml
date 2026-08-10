@@ -1,0 +1,132 @@
+name: One-time bowler state repair
+
+on:
+  push:
+    branches: [main]
+
+permissions:
+  contents: write
+
+jobs:
+  repair:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Patch bowler state and display
+        shell: python
+        run: |
+          from pathlib import Path
+
+          page = Path('src/app/page.tsx')
+          text = page.read_text(encoding='utf-8-sig')
+
+          old = '''    const battingTeam = selectedTournament?.teams.find(
+      (team) => team.team.id === teamAId,
+    );
+    const bowlingTeam = selectedTournament?.teams.find(
+      (team) => team.team.id === teamBId,
+    );'''
+          new = '''    const battingTeam = selectedTournament?.teams.find(
+      (team) => team.team.id === liveBattingTeamId,
+    );
+    const bowlingTeam = selectedTournament?.teams.find(
+      (team) => team.team.id === liveBowlingTeamId,
+    );'''
+          if old not in text:
+              raise SystemExit('Expected LiveScoring team lookup was not found')
+          text = text.replace(old, new, 1)
+
+          old = '''    const activeBowlerA = teamBPlayers.find(
+      (player) => player.id === liveBowlerAId,
+    );
+    const activeBowlerB = teamBPlayers.find(
+      (player) => player.id === liveBowlerBId,
+    );'''
+          new = '''    const activeBowlerA = liveBowlingPlayers.find(
+      (player) => player.id === liveBowlerAId,
+    );
+    const activeBowlerB = liveBowlingPlayers.find(
+      (player) => player.id === liveBowlerBId,
+    );'''
+          if old not in text:
+              raise SystemExit('Expected active bowler lookup was not found')
+          text = text.replace(old, new, 1)
+
+          old = 'won Â· elected to ${tossDecision === "BAT" ? "bat" : "bowl"}'
+          text = text.replace(old, 'won · elected to ${tossDecision === "BAT" ? "bat" : "bowl"}', 1)
+          text = text.replace('>â€¢<', '>•<')
+          text = text.replace(' â€¢ ', ' • ')
+
+          old = '''      const refreshedBowlerAId = innings.currentBowlerAId ?? "";
+      const refreshedBowlerBId = innings.currentBowlerBId ?? "";'''
+          new = '''      const refreshedBowlerAId = innings.currentBowlerAId ?? "";
+      const refreshedBowlerBId =
+        innings.currentBowlerBId ??
+        (refreshedOverDeliveries.length > 0 ? liveBowlerBId : "");'''
+          # This block depends on refreshedOverDeliveries, so patch the whole calculation below instead.
+          old_block = '''      const refreshedBowlerAId = innings.currentBowlerAId ?? "";
+      const refreshedBowlerBId = innings.currentBowlerBId ?? "";
+      const refreshedOverNumber = Math.floor(Number(innings.legalBalls ?? 0) / 6) + 1;
+      const refreshedOverDeliveries = deliveries.filter(
+        (delivery: LiveDeliveryView) =>
+          delivery.overNumber === refreshedOverNumber,
+      );'''
+          new_block = '''      const refreshedOverNumber = Math.floor(Number(innings.legalBalls ?? 0) / 6) + 1;
+      const refreshedOverDeliveries = deliveries.filter(
+        (delivery: LiveDeliveryView) =>
+          delivery.overNumber === refreshedOverNumber,
+      );
+      const refreshedBowlerAId = innings.currentBowlerAId ?? "";
+      const refreshedBowlerBId =
+        innings.currentBowlerBId ??
+        (refreshedOverDeliveries.length > 0 ? liveBowlerBId : "");'''
+          if old_block not in text:
+              raise SystemExit('Expected refresh bowler block was not found')
+          text = text.replace(old_block, new_block, 1)
+
+          page.write_text(text, encoding='utf-8')
+
+          scoring = Path('src/lib/scoring.ts')
+          text = scoring.read_text(encoding='utf-8-sig')
+          old = '''        const bowlerA =
+          innings.currentBowlerAId ??
+          currentOverFirstBowler;
+
+        const bowlerB =
+          innings.currentBowlerBId ??
+          currentOverSecondBowler;'''
+          new = '''        const firstDeliveryOfOver = overDeliveries.length === 0;
+
+        const bowlerA =
+          firstDeliveryOfOver
+            ? currentOverFirstBowler
+            : innings.currentBowlerAId ?? currentOverFirstBowler;
+
+        const bowlerB =
+          firstDeliveryOfOver
+            ? null
+            : innings.currentBowlerBId ?? currentOverSecondBowler;'''
+          if old not in text:
+              raise SystemExit('Expected scoring bowler state block was not found')
+          text = text.replace(old, new, 1)
+          scoring.write_text(text, encoding='utf-8')
+
+          # Mark the repair in the source so it is obvious and idempotent.
+          marker = 'One-time bowler state repair'
+          if marker not in text:
+              text = text.replace('export async function', '// One-time bowler state repair: keep the active pair synchronized when a new pair starts.\n\nexport async function', 1) if 'export async function' in text else text
+              scoring.write_text(text, encoding='utf-8')
+
+      - name: Commit repair and remove workflow
+        shell: bash
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          rm -f .github/workflows/one-time-bowler-fix.yml
+          git add src/app/page.tsx src/lib/scoring.ts .github/workflows/one-time-bowler-fix.yml
+          git diff --cached --quiet && exit 0
+          git commit -m "fix: synchronize double-bowler state and names"
+          git push
