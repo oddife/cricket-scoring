@@ -20,11 +20,150 @@ jobs:
         run: |
           python3 <<'PY'
           from pathlib import Path
-          import re
 
           path = Path('src/app/page.tsx')
           text = path.read_text(encoding='utf-8-sig')
 
-          pattern = r'\n        /\* Matches \*/[\\s\\S]*?\n      </section>'
+          marker = '        {/* Matches */}'
+          start = text.find(marker)
+          if start < 0:
+              raise SystemExit('Matches section marker not found')
 
-          replacement
+          end = text.find('\n      </section>', start)
+          if end < 0:
+              raise SystemExit('Tournament dashboard section end not found')
+
+          replacement = r'''        {/* Matches */}
+        <div className="mt-5 rounded-2xl border border-slate-800 bg-slate-950/70 p-6 [color-scheme:dark]">
+          <div className="flex flex-col justify-between gap-3 sm:flex-row sm:items-center">
+            <div>
+              <h3 className="font-semibold">Previous Matches</h3>
+              <p className="mt-1 text-sm text-slate-500">
+                Completed matches from this tournament.
+              </p>
+            </div>
+
+            <button
+              type="button"
+              onClick={() => void loadCompletedMatches(selectedTournament.id)}
+              disabled={loadingCompletedMatches}
+              className="h-10 rounded-xl border border-slate-700 px-4 text-sm font-semibold text-slate-300 hover:bg-slate-900 disabled:opacity-50 [color-scheme:dark]"
+            >
+              {loadingCompletedMatches ? "Refreshing..." : "Refresh"}
+            </button>
+          </div>
+
+          <div className="mt-5 space-y-3">
+            {completedMatches.map((match) => {
+              const innings = [...match.innings].sort(
+                (a, b) => a.inningsNumber - b.inningsNumber,
+              );
+
+              const formatScore = (item: (typeof innings)[number]) =>
+                `${item.totalRuns}/${item.wickets} (${Math.floor(item.legalBalls / 6)}.${item.legalBalls % 6})`;
+
+              const firstInnings = innings[0];
+              const secondInnings = innings[1];
+              const winnerId =
+                firstInnings?.totalRuns !== undefined &&
+                secondInnings?.totalRuns !== undefined
+                  ? firstInnings.totalRuns > secondInnings.totalRuns
+                    ? firstInnings.battingTeamId
+                    : firstInnings.totalRuns < secondInnings.totalRuns
+                      ? secondInnings.battingTeamId
+                      : null
+                  : null;
+
+              const winnerName =
+                winnerId === match.teamA.id
+                  ? match.teamA.name
+                  : winnerId === match.teamB.id
+                    ? match.teamB.name
+                    : null;
+
+              return (
+                <div
+                  key={match.id}
+                  className="rounded-2xl border border-slate-800 bg-slate-950 p-4 [color-scheme:dark]"
+                >
+                  <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+                    <div className="min-w-0">
+                      <p className="text-lg font-bold text-slate-100">
+                        {match.teamA.name} <span className="text-slate-600">vs</span> {match.teamB.name}
+                      </p>
+
+                      {innings.length > 0 ? (
+                        <div className="mt-3 space-y-1 text-sm">
+                          {innings.map((item) => {
+                            const battingTeamName =
+                              item.battingTeamId === match.teamA.id
+                                ? match.teamA.name
+                                : match.teamB.name;
+
+                            return (
+                              <div key={item.id} className="flex flex-wrap items-center gap-x-2 gap-y-1">
+                                <span className="font-medium text-slate-300">{battingTeamName}</span>
+                                <span className="font-bold text-slate-100">{formatScore(item)}</span>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      ) : (
+                        <p className="mt-2 text-sm text-slate-500">No innings data available.</p>
+                      )}
+
+                      <div className="mt-3 flex flex-wrap items-center gap-2 text-xs">
+                        {winnerName ? (
+                          <span className="rounded-lg bg-emerald-500/10 px-2.5 py-1 font-semibold text-emerald-400">
+                            {winnerName} won
+                          </span>
+                        ) : (
+                          <span className="rounded-lg bg-slate-800 px-2.5 py-1 font-semibold text-slate-400">
+                            Match drawn / tied
+                          </span>
+                        )}
+                        <span className="rounded-lg bg-slate-800 px-2.5 py-1 text-slate-500">
+                          {match.oversPerInnings} overs
+                        </span>
+                        <span className="rounded-lg bg-slate-800 px-2.5 py-1 text-slate-500">
+                          {match.inningsPerMatch} innings
+                        </span>
+                      </div>
+                    </div>
+
+                    <button
+                      type="button"
+                      className="h-11 shrink-0 rounded-xl border border-emerald-500/40 bg-emerald-500/10 px-5 font-semibold text-emerald-400 hover:bg-emerald-500/20"
+                      disabled
+                      title="Scorecard will be added next"
+                    >
+                      Scorecard
+                    </button>
+                  </div>
+                </div>
+              );
+            })}
+
+            {!loadingCompletedMatches && completedMatches.length === 0 && (
+              <div className="rounded-xl border border-dashed border-slate-800 p-6 text-center text-sm text-slate-500 [color-scheme:dark]">
+                No completed matches in this tournament.
+              </div>
+            )}
+          </div>
+        </div>'''
+
+          text = text[:start] + replacement + text[end:]
+          path.write_text(text, encoding='utf-8')
+          PY
+
+      - name: Commit changes
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add src/app/page.tsx
+          if git diff --cached --quiet; then
+            echo "No changes needed"
+          else
+            git commit -m "Add previous matches dashboard [previous-matches-patch]"
+            git push
+          fi
