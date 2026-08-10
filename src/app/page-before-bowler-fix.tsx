@@ -1,4 +1,4 @@
-﻿"use client";
+"use client";
 
 import { useEffect, useState } from "react";
 
@@ -304,8 +304,6 @@ const [resumingMatchId, setResumingMatchId] =
 
   const [liveInningsId, setLiveInningsId] =
     useState<string | null>(null);
-  const [liveBattingTeamId, setLiveBattingTeamId] = useState("");
-  const [liveBowlingTeamId, setLiveBowlingTeamId] = useState("");
   const [liveRuns, setLiveRuns] = useState(0);
   const [liveWickets, setLiveWickets] = useState(0);
   const [liveLegalBalls, setLiveLegalBalls] = useState(0);
@@ -1681,12 +1679,6 @@ const [resumingMatchId, setResumingMatchId] =
       setError("");
 
       setLiveInningsId(data.id);
-      setLiveBattingTeamId(
-        data.battingTeamId ?? inningsOneBattingTeamId,
-      );
-      setLiveBowlingTeamId(
-        data.bowlingTeamId ?? inningsOneBowlingTeamId,
-      );
       setLiveRuns(data.totalRuns ?? 0);
       setLiveWickets(data.wickets ?? 0);
       setLiveLegalBalls(data.legalBalls ?? 0);
@@ -1759,8 +1751,6 @@ const [resumingMatchId, setResumingMatchId] =
         : [];
 
       setLiveDeliveries(deliveries);
-      setLiveBattingTeamId(innings.battingTeamId ?? "");
-      setLiveBowlingTeamId(innings.bowlingTeamId ?? "");
       setLiveRuns(Number(innings.totalRuns ?? 0));
       setLiveWickets(Number(innings.wickets ?? 0));
       setLiveLegalBalls(Number(innings.legalBalls ?? 0));
@@ -1811,42 +1801,28 @@ const [resumingMatchId, setResumingMatchId] =
     }
   }
 
-  const liveBattingPlayers =
-    liveBattingTeamId === teamAId
-      ? teamAPlayers
-      : liveBattingTeamId === teamBId
-        ? teamBPlayers
-        : [];
-
-  const liveBowlingPlayers =
-    liveBowlingTeamId === teamAId
-      ? teamAPlayers
-      : liveBowlingTeamId === teamBId
-        ? teamBPlayers
-        : [];
-
   const liveStriker =
-    liveBattingPlayers.find(
+    teamAPlayers.find(
       (player) => player.id === liveStrikerId,
     );
 
   const liveNonStriker =
-    liveBattingPlayers.find(
+    teamAPlayers.find(
       (player) => player.id === liveNonStrikerId,
     );
 
   const liveBowler =
-    liveBowlingPlayers.find(
+    teamBPlayers.find(
       (player) => player.id === liveBowlerId,
     );
 
   const liveBowlerA =
-    liveBowlingPlayers.find(
+    teamBPlayers.find(
       (player) => player.id === liveBowlerAId,
     );
 
   const liveBowlerB =
-    liveBowlingPlayers.find(
+    teamBPlayers.find(
       (player) => player.id === liveBowlerBId,
     );
 
@@ -2206,13 +2182,13 @@ const [resumingMatchId, setResumingMatchId] =
       liveNonStrikerId,
     ]);
 
-    const nextBatsmen = liveBattingPlayers.filter(
+    const nextBatsmen = teamAPlayers.filter(
       (player) =>
         !activeBatters.has(player.id) &&
         !dismissedIds.has(player.id),
     );
 
-    const battingStats = liveBattingPlayers.map((player) => {
+    const battingStats = teamAPlayers.map((player) => {
       const balls = liveDeliveries.filter(
         (delivery) =>
           delivery.strikerId === player.id &&
@@ -2242,7 +2218,7 @@ const [resumingMatchId, setResumingMatchId] =
         activeBatters.has(stat.player.id),
     );
 
-    const bowlingStats = liveBowlingPlayers.map((player) => {
+    const bowlingStats = teamBPlayers.map((player) => {
       const deliveries = liveDeliveries.filter(
         (delivery) => delivery.bowlerId === player.id,
       );
@@ -2304,7 +2280,7 @@ const [resumingMatchId, setResumingMatchId] =
     const fallOfWickets = liveDeliveries
       .filter((delivery) => delivery.wicket)
       .map((delivery) => ({
-        player: liveBattingPlayers.find(
+        player: teamAPlayers.find(
           (player) => player.id === delivery.wicket!.dismissedPlayerId,
         ),
         score: liveDeliveries
@@ -2623,9 +2599,9 @@ const [resumingMatchId, setResumingMatchId] =
                     <p className="text-xs font-bold uppercase tracking-wide text-slate-600">Select Next Over</p>
                     <select value={nextOverBowlerAId} onChange={(event) => setNextOverBowlerAId(event.target.value)} className="mt-3 h-11 w-full rounded-lg border border-slate-700 bg-slate-950 px-3 text-white [color-scheme:dark] [color-scheme:dark]">
                       <option value="">Select bowler</option>
-                      {liveBowlingPlayers.map((player) => <option key={player.id} value={player.id} disabled={bowlerDisabledForNextOver(player.id)}>{player.name}{bowlerDisabledForNextOver(player.id) ? " (cannot bowl consecutive over)" : ""}</option>)}
+                      {teamBPlayers.map((player) => <option key={player.id} value={player.id} disabled={bowlerDisabledForNextOver(player.id)}>{player.name}{bowlerDisabledForNextOver(player.id) ? " (cannot bowl consecutive over)" : ""}</option>)}
                     </select>
-                    {doubleMode && !oddFinalOver && <select value={nextOverBowlerBId} onChange={(event) => setNextOverBowlerBId(event.target.value)} className="mt-2 h-11 w-full rounded-lg border border-slate-700 bg-slate-950 px-3 text-white [color-scheme:dark] [color-scheme:dark]"><option value="">Select second bowler</option>{liveBowlingPlayers.map((player) => <option key={player.id} value={player.id} disabled={player.id === nextOverBowlerAId || bowlerDisabledForNextOver(player.id)}>{player.name}</option>)}</select>}
+                    {doubleMode && !oddFinalOver && <select value={nextOverBowlerBId} onChange={(event) => setNextOverBowlerBId(event.target.value)} className="mt-2 h-11 w-full rounded-lg border border-slate-700 bg-slate-950 px-3 text-white [color-scheme:dark] [color-scheme:dark]"><option value="">Select second bowler</option>{teamBPlayers.map((player) => <option key={player.id} value={player.id} disabled={player.id === nextOverBowlerAId || bowlerDisabledForNextOver(player.id)}>{player.name}</option>)}</select>}
                     <button type="button" onClick={selectNextOverBowlers} className="mt-3 h-11 w-full rounded-lg bg-blue-600 font-bold text-white hover:bg-blue-700 [color-scheme:dark]">Start Next Over</button>
                   </div>
                 )}
@@ -3553,7 +3529,7 @@ late-800 disabled:opacity-50 [color-scheme:dark]"
                   <h2 className="text-xl font-semibold">Tournament Management</h2>
                   <p className="mt-2 text-sm text-slate-400">Maintenance tools</p>
                 </div>
-                <button type="button" onClick={() => setMaintenanceMode("CLOSED")} className="rounded-xl border border-slate-700 px-3 py-2 text-slate-400 hover:bg-slate-800 [color-scheme:dark]">-</button>
+                <button type="button" onClick={() => setMaintenanceMode("CLOSED")} className="rounded-xl border border-slate-700 px-3 py-2 text-slate-400 hover:bg-slate-800 [color-scheme:dark]">âœ•</button>
               </div>
 
               <div className="max-h-[55vh] space-y-3 overflow-y-auto">
@@ -4544,14 +4520,14 @@ hover:bg-emerald-500/10 [color-scheme:dark]"
             <div className="rounded-xl bg-emerald-500/10 px-4 py-3">
               <p className="text-xs text-slate-500">Batting</p>
               <p className="mt-1 font-semibold text-emerald-400">
-                {battingTeam?.team.name ?? "-"}
+                {battingTeam?.team.name ?? "â€”"}
               </p>
             </div>
 
             <div className="rounded-xl bg-blue-500/10 px-4 py-3">
               <p className="text-xs text-slate-500">Bowling</p>
               <p className="mt-1 font-semibold text-blue-400">
-                {bowlingTeam?.team.name ?? "-"}
+                {bowlingTeam?.team.name ?? "â€”"}
               </p>
             </div>
           </div>
@@ -5303,4 +5279,3 @@ r-emerald-500 [color-scheme:dark]"
     </main>
   );
 }
-
