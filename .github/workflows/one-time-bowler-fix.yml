@@ -1,112 +1,13 @@
 name: One-time bowler state repair
 
-on:
-  push:
-    branches: [main]
+on: push
 
 permissions:
   contents: write
 
 jobs:
   repair:
-    if: github.actor != 'github-actions[bot]'
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-
-      - name: Patch source
-        shell: bash
-        run: |
-          python3 <<'PY'
-          from pathlib import Path
-
-          page = Path('src/app/page.tsx')
-          text = page.read_text(encoding='utf-8-sig')
-
-          replacements = [
-            ('''    const battingTeam = selectedTournament?.teams.find(
-      (team) => team.team.id === teamAId,
-    );
-    const bowlingTeam = selectedTournament?.teams.find(
-      (team) => team.team.id === teamBId,
-    );''', '''    const battingTeam = selectedTournament?.teams.find(
-      (team) => team.team.id === liveBattingTeamId,
-    );
-    const bowlingTeam = selectedTournament?.teams.find(
-      (team) => team.team.id === liveBowlingTeamId,
-    );'''),
-            ('''    const activeBowlerA = teamBPlayers.find(
-      (player) => player.id === liveBowlerAId,
-    );
-    const activeBowlerB = teamBPlayers.find(
-      (player) => player.id === liveBowlerBId,
-    );''', '''    const activeBowlerA = liveBowlingPlayers.find(
-      (player) => player.id === liveBowlerAId,
-    );
-    const activeBowlerB = liveBowlingPlayers.find(
-      (player) => player.id === liveBowlerBId,
-    );'''),
-            ('''      const refreshedBowlerAId = innings.currentBowlerAId ?? "";
-      const refreshedBowlerBId = innings.currentBowlerBId ?? "";
-      const refreshedOverNumber = Math.floor(Number(innings.legalBalls ?? 0) / 6) + 1;
-      const refreshedOverDeliveries = deliveries.filter(
-        (delivery: LiveDeliveryView) =>
-          delivery.overNumber === refreshedOverNumber,
-      );''', '''      const refreshedOverNumber = Math.floor(Number(innings.legalBalls ?? 0) / 6) + 1;
-      const refreshedOverDeliveries = deliveries.filter(
-        (delivery: LiveDeliveryView) =>
-          delivery.overNumber === refreshedOverNumber,
-      );
-      const refreshedBowlerAId = innings.currentBowlerAId ?? "";
-      const refreshedBowlerBId =
-        innings.currentBowlerBId ??
-        (refreshedOverDeliveries.length > 0 ? liveBowlerBId : "");'''),
-          ]
-
-          for old, new in replacements:
-              if old not in text:
-                  raise SystemExit('Expected page.tsx block not found')
-              text = text.replace(old, new, 1)
-
-          text = text.replace('won Â· elected to ${tossDecision === "BAT" ? "bat" : "bowl"}', 'won · elected to ${tossDecision === "BAT" ? "bat" : "bowl"}')
-          text = text.replace('â€¢', '•')
-          text = text.replace('Â·', '·')
-          page.write_text(text, encoding='utf-8')
-
-          scoring = Path('src/lib/scoring.ts')
-          text = scoring.read_text(encoding='utf-8-sig')
-          old = '''        const bowlerA =
-          innings.currentBowlerAId ??
-          currentOverFirstBowler;
-
-        const bowlerB =
-          innings.currentBowlerBId ??
-          currentOverSecondBowler;'''
-          new = '''        const firstDeliveryOfOver = overDeliveries.length === 0;
-
-        const bowlerA =
-          firstDeliveryOfOver
-            ? currentOverFirstBowler
-            : innings.currentBowlerAId ?? currentOverFirstBowler;
-
-        const bowlerB =
-          firstDeliveryOfOver
-            ? null
-            : innings.currentBowlerBId ?? currentOverSecondBowler;'''
-          if old not in text:
-              raise SystemExit('Expected scoring.ts block not found')
-          text = text.replace(old, new, 1)
-          scoring.write_text(text, encoding='utf-8')
-          PY
-
-      - name: Commit repair and remove workflow
-        shell: bash
-        run: |
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          rm -f .github/workflows/one-time-bowler-fix.yml
-          git add src/app/page.tsx src/lib/scoring.ts .github/workflows/one-time-bowler-fix.yml
-          git diff --cached --quiet && exit 0
-          git commit -m "fix: synchronize double-bowler state and names"
-          git push
+      - uses: actions/checkout@v4
+      - run: echo "repair workflow started"
