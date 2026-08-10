@@ -1,0 +1,153 @@
+from pathlib import Path
+
+p = Path('src/app/page.tsx')
+s = p.read_text(encoding='utf-8-sig')
+if 'scorecardMatch' in s:
+    print('Scorecard already present; nothing to do.')
+    raise SystemExit(0)
+
+state_marker = 'type GlobalPlayer = {'
+state_insert = '''type ScorecardMatch = {
+  id: string;
+  teamA: { id: string; name: string; shortName: string | null };
+  teamB: { id: string; name: string; shortName: string | null };
+  winnerId: string | null;
+  oversPerInnings: number;
+  inningsPerMatch: number;
+  players: Array<{ playerId: string; player: GlobalPlayer; teamId: string }>;
+  innings: Array<{
+    id: string;
+    inningsNumber: number;
+    totalRuns: number;
+    wickets: number;
+    legalBalls: number;
+    battingTeamId: string;
+    bowlingTeamId: string;
+    deliveries: Array<{
+      id: string; overNumber: number; ballNumber: number; bowlerId: string; strikerId: string; nonStrikerId: string;
+      runsBat: number; runsExtra: number; runsTotal: number; isLegal: boolean; extraType: string | null; isWicket: boolean;
+      striker: { id: string; name: string; jerseyNumber: number | null };
+      bowler: { id: string; name: string; jerseyNumber: number | null };
+      wicket: { type: string; dismissedPlayerId: string; bowlerId: string | null } | null;
+    }>;
+  }>;
+};
+
+'''
+assert state_marker in s
+s = s.replace(state_marker, state_insert + state_marker, 1)
+
+completed_marker = 'const [loadingCompletedMatches, setLoadingCompletedMatches] = useState(false);'
+completed_insert = '''const [loadingCompletedMatches, setLoadingCompletedMatches] = useState(false);
+  const [scorecardMatch, setScorecardMatch] = useState<ScorecardMatch | null>(null);
+  const [loadingScorecard, setLoadingScorecard] = useState(false);'''
+assert completed_marker in s
+s = s.replace(completed_marker, completed_insert, 1)
+
+function_marker = '  async function resumeMatch(matchId: string) {'
+function_insert = '''  async function openScorecard(matchId: string) {
+    try {
+      setLoadingScorecard(true);
+      setError("");
+      const response = await fetch(`/api/matches/${matchId}`, { cache: "no-store" });
+      const data = await response.json();
+      if (!response.ok) throw new Error(data?.error || "Failed to load scorecard.");
+      setScorecardMatch(data.match ?? data);
+    } catch (err) {
+      console.error(err);
+      setError(err instanceof Error ? err.message : "Failed to load scorecard.");
+    } finally {
+      setLoadingScorecard(false);
+    }
+  }
+
+'''
+assert function_marker in s
+s = s.replace(function_marker, function_insert + function_marker, 1)
+
+old_button = '''                    <button
+                      type="button"
+                      disabled
+                      title="Scorecard will be added next"
+                      className="h-11 shrink-0 rounded-xl border border-emerald-500/40 bg-emerald-500/10 px-5 font-semibold text-emerald-400"
+                    >
+                      Scorecard
+                    </button>'''
+new_button = '''                    <button
+                      type="button"
+                      onClick={() => void openScorecard(match.id)}
+                      disabled={loadingScorecard}
+                      className="h-11 shrink-0 rounded-xl border border-emerald-500/40 bg-emerald-500/10 px-5 font-semibold text-emerald-400 transition hover:bg-emerald-500/20 disabled:opacity-50"
+                    >
+                      {loadingScorecard ? "Loading..." : "Scorecard"}
+                    </button>'''
+assert old_button in s
+s = s.replace(old_button, new_button, 1)
+
+modal_marker = '''      <CreateTournament />
+      <AddTeamModal />'''
+modal = '''      {scorecardMatch && (
+        <div className="fixed inset-0 z-[80] overflow-y-auto bg-black/70 p-3 backdrop-blur-sm sm:p-6">
+          <div className="mx-auto my-4 w-full max-w-6xl rounded-3xl border border-slate-700 bg-slate-950 p-4 shadow-2xl sm:my-8 sm:p-6 [color-scheme:dark]">
+            {(() => {
+              const match = scorecardMatch;
+              const teamName = (id: string) => id === match.teamA.id ? match.teamA.name : match.teamB.name;
+              const playerName = (id: string) => match.players.find((item) => item.playerId === id)?.player.name ?? "Player";
+              const winnerName = match.winnerId ? teamName(match.winnerId) : null;
+              return (
+                <>
+                  <div className="flex flex-col justify-between gap-4 border-b border-slate-800 pb-5 sm:flex-row sm:items-start">
+                    <div><p className="text-xs font-bold uppercase tracking-widest text-emerald-400">Match Scorecard</p><h2 className="mt-1 text-2xl font-black sm:text-3xl">{match.teamA.name} <span className="text-slate-600">vs</span> {match.teamB.name}</h2><p className="mt-2 text-sm text-slate-500">{match.oversPerInnings} overs · {match.inningsPerMatch} innings</p></div>
+                    <button type="button" onClick={() => setScorecardMatch(null)} className="h-10 rounded-xl border border-slate-700 px-4 font-semibold text-slate-300 hover:bg-slate-900">Close</button>
+                  </div>
+
+                  <div className="mt-5 grid gap-3 sm:grid-cols-2">
+                    {match.innings.map((innings) => <div key={innings.id} className="rounded-2xl border border-slate-800 bg-slate-900 p-4"><div className="flex items-center justify-between gap-3"><div><p className="text-xs font-bold uppercase tracking-wide text-slate-500">Innings {innings.inningsNumber}</p><p className="mt-1 text-lg font-bold">{teamName(innings.battingTeamId)}</p></div><div className="text-right"><p className="text-3xl font-black">{innings.totalRuns}/{innings.wickets}</p><p className="text-xs text-slate-500">{Math.floor(innings.legalBalls / 6)}.{innings.legalBalls % 6} overs</p></div></div></div>)}
+                  </div>
+
+                  {winnerName ? <div className="mt-4 rounded-xl bg-emerald-500/10 px-4 py-3 text-sm font-bold text-emerald-400">{winnerName} won the match</div> : <div className="mt-4 rounded-xl bg-slate-900 px-4 py-3 text-sm font-bold text-slate-400">Match drawn / tied</div>}
+
+                  <div className="mt-6 space-y-6">
+                    {match.innings.map((innings) => {
+                      const batting = new Map<string, { runs: number; balls: number; fours: number; sixes: number; out: boolean; dismissal: string }>();
+                      const bowling = new Map<string, { balls: number; runs: number; wickets: number }>();
+                      const fall: Array<{ score: number; player: string; over: string }> = [];
+                      let scoreAtDelivery = 0;
+                      for (const d of innings.deliveries) {
+                        const bat = batting.get(d.strikerId) ?? { runs: 0, balls: 0, fours: 0, sixes: 0, out: false, dismissal: "" };
+                        bat.runs += d.runsBat; if (d.isLegal) bat.balls += 1; if (d.runsBat === 4) bat.fours += 1; if (d.runsBat === 6) bat.sixes += 1;
+                        if (d.isWicket && d.wicket?.dismissedPlayerId === d.strikerId) { bat.out = true; bat.dismissal = d.wicket.type.replaceAll("_", " "); fall.push({ score: scoreAtDelivery + d.runsTotal, player: d.striker.name, over: `${d.overNumber}.${d.ballNumber}` }); }
+                        batting.set(d.strikerId, bat);
+                        const bowl = bowling.get(d.bowlerId) ?? { balls: 0, runs: 0, wickets: 0 };
+                        if (d.isLegal) bowl.balls += 1; bowl.runs += d.runsTotal; if (d.isWicket && d.wicket?.bowlerId === d.bowlerId) bowl.wickets += 1; bowling.set(d.bowlerId, bowl); scoreAtDelivery += d.runsTotal;
+                      }
+                      const battingRows = Array.from(batting.entries());
+                      const bowlingRows = Array.from(bowling.entries());
+                      const extras = innings.deliveries.reduce((sum, d) => sum + d.runsExtra, 0);
+                      return (
+                        <section key={innings.id} className="rounded-2xl border border-slate-800 bg-slate-900 p-4 sm:p-5">
+                          <div className="flex flex-col justify-between gap-2 border-b border-slate-800 pb-4 sm:flex-row sm:items-center"><div><p className="text-xs font-bold uppercase tracking-wide text-emerald-400">Innings {innings.inningsNumber}</p><h3 className="mt-1 text-xl font-black">{teamName(innings.battingTeamId)} <span className="text-slate-600">batting</span></h3></div><div className="text-left sm:text-right"><p className="text-2xl font-black">{innings.totalRuns}/{innings.wickets}</p><p className="text-xs text-slate-500">{Math.floor(innings.legalBalls / 6)}.{innings.legalBalls % 6} overs · Extras {extras}</p></div></div>
+                          <div className="mt-5 grid gap-6 lg:grid-cols-2">
+                            <div><div className="mb-2 grid grid-cols-[1fr_45px_45px_40px_40px_55px] gap-2 border-b border-slate-800 pb-2 text-[11px] font-bold uppercase text-slate-500"><span>Batter</span><span>R</span><span>B</span><span>4s</span><span>6s</span><span>SR</span></div><div className="space-y-1">{battingRows.length === 0 && <p className="py-4 text-sm text-slate-500">No batting data.</p>}{battingRows.map(([id, stat]) => { const sr = stat.balls ? ((stat.runs / stat.balls) * 100).toFixed(2) : "0.00"; return <div key={id} className="grid grid-cols-[1fr_45px_45px_40px_40px_55px] items-center gap-2 rounded-lg px-2 py-2 text-sm hover:bg-slate-800"><div className="min-w-0"><p className="truncate font-bold">{playerName(id)}{!stat.out ? " *" : ""}</p><p className="text-[10px] uppercase text-slate-500">{stat.out ? stat.dismissal : "not out"}</p></div><b>{stat.runs}</b><span>{stat.balls}</span><span>{stat.fours}</span><span>{stat.sixes}</span><span>{sr}</span></div>; })}</div></div>
+                            <div><div className="mb-2 grid grid-cols-[1fr_45px_45px_45px_55px] gap-2 border-b border-slate-800 pb-2 text-[11px] font-bold uppercase text-slate-500"><span>Bowler</span><span>O</span><span>R</span><span>W</span><span>ECON</span></div><div className="space-y-1">{bowlingRows.length === 0 && <p className="py-4 text-sm text-slate-500">No bowling data.</p>}{bowlingRows.map(([id, stat]) => { const overs = `${Math.floor(stat.balls / 6)}.${stat.balls % 6}`; const econ = stat.balls ? ((stat.runs / stat.balls) * 6).toFixed(2) : "0.00"; return <div key={id} className="grid grid-cols-[1fr_45px_45px_45px_55px] items-center gap-2 rounded-lg px-2 py-2 text-sm hover:bg-slate-800"><span className="truncate font-bold">{playerName(id)}</span><span>{overs}</span><span>{stat.runs}</span><span>{stat.wickets}</span><span>{econ}</span></div>; })}</div></div>
+                          </div>
+                          {fall.length > 0 && <div className="mt-5 border-t border-slate-800 pt-4"><p className="text-xs font-bold uppercase tracking-wide text-slate-500">Fall of Wickets</p><div className="mt-2 flex flex-wrap gap-2">{fall.map((item, index) => <span key={`${item.player}-${index}`} className="rounded-lg bg-slate-800 px-3 py-2 text-xs"><b>{index + 1}-{item.score}</b> {item.player} ({item.over})</span>)}</div></div>}
+                          <div className="mt-5 border-t border-slate-800 pt-4"><p className="text-xs font-bold uppercase tracking-wide text-slate-500">Ball by Ball</p><div className="mt-3 space-y-3">{Array.from(new Set(innings.deliveries.map((d) => d.overNumber))).map((overNumber) => { const over = innings.deliveries.filter((d) => d.overNumber === overNumber); return <div key={overNumber} className="rounded-xl bg-slate-950 p-3"><div className="mb-2 flex items-center justify-between"><b className="text-sm">Over {overNumber}</b><span className="text-xs text-slate-500">{over.reduce((sum, d) => sum + d.runsTotal, 0)} runs</span></div><div className="flex flex-wrap gap-2">{over.map((d) => <span key={d.id} title={`${d.bowler.name} to ${d.striker.name}`} className={`flex min-h-8 items-center justify-center rounded-full px-3 text-xs font-bold ${d.isWicket ? "bg-red-500 text-white" : d.runsTotal === 4 || d.runsTotal === 6 ? "bg-blue-500 text-white" : d.runsTotal ? "bg-slate-700 text-white" : "bg-slate-800 text-slate-400"}`}>{d.isWicket ? "W" : d.extraType ? `${d.runsTotal} ${d.extraType.replaceAll("_", " ")}` : d.runsBat}</span>)}</div></div>; })}{innings.deliveries.length === 0 && <p className="text-sm text-slate-500">No delivery data available.</p>}</div></div>
+                        </section>
+                      );
+                    })}
+                  </div>
+                </>
+              );
+            })()}
+          </div>
+        </div>
+      )}
+
+      <CreateTournament />
+      <AddTeamModal />'''
+assert modal_marker in s
+s = s.replace(modal_marker, modal, 1)
+
+p.write_text(s, encoding='utf-8')
+print('Scorecard patch applied.')
