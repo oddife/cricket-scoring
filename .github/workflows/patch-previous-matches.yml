@@ -1,0 +1,30 @@
+name: Patch Previous Matches Dashboard
+
+on:
+  push:
+    branches:
+      - main
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    if: "!contains(github.event.head_commit.message, '[previous-matches-patch]')"
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Update tournament dashboard
+        run: |
+          python3 <<'PY'
+          from pathlib import Path
+          import re
+
+          path = Path('src/app/page.tsx')
+          text = path.read_text(encoding='utf-8-sig')
+
+          pattern = r'\n        /\* Matches \*/[\\s\\S]*?\n      </section>'
+
+          replacement
