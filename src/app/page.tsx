@@ -1775,19 +1775,24 @@ const [resumingMatchId, setResumingMatchId] =
       const refreshedBowlerAId = innings.currentBowlerAId ?? "";
       const refreshedBowlerBId =
         innings.currentBowlerBId ??
-        (refreshedOverDeliveries.length > 0 ? liveBowlerBId : "");
+        liveBowlerBId;
 
       setLiveBowlerAId(refreshedBowlerAId);
       setLiveBowlerBId(refreshedBowlerBId);
-      setLiveBowlerId(
+      const lastOverDelivery =
+        refreshedOverDeliveries[refreshedOverDeliveries.length - 1];
+
+      const refreshedCurrentBowlerId =
         bowlingMode === "DOUBLE" &&
         refreshedBowlerAId &&
-        refreshedBowlerBId
-          ? refreshedOverDeliveries.length % 2 === 0
-            ? refreshedBowlerAId
-            : refreshedBowlerBId
-          : refreshedBowlerAId,
-      );
+        refreshedBowlerBId &&
+        lastOverDelivery
+          ? lastOverDelivery.bowlerId === refreshedBowlerAId
+            ? refreshedBowlerBId
+            : refreshedBowlerAId
+          : refreshedBowlerAId;
+
+      setLiveBowlerId(refreshedCurrentBowlerId);
       setLivePreviousBowlerAId(innings.previousOverBowlerAId ?? "");
       setLivePreviousBowlerBId(innings.previousOverBowlerBId ?? "");
       setLiveOddOvers(Boolean(innings.match?.oddOvers));

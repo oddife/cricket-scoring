@@ -669,9 +669,7 @@ export async function recordPersistentDelivery(
             : innings.currentBowlerAId ?? currentOverFirstBowler;
 
         const bowlerB =
-          firstDeliveryOfOver
-            ? null
-            : innings.currentBowlerBId ?? currentOverSecondBowler;
+          innings.currentBowlerBId ?? currentOverSecondBowler;
 
         const updated =
           await tx.innings.update({
