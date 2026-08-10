@@ -1,4 +1,4 @@
-﻿"use client";
+"use client";
 
 import { useEffect, useState } from "react";
 
@@ -1767,13 +1767,15 @@ const [resumingMatchId, setResumingMatchId] =
       setLiveInningsComplete(innings.status === "COMPLETED");
       setLiveStrikerId(innings.currentStrikerId ?? liveStrikerId);
       setLiveNonStrikerId(innings.currentNonStrikerId ?? liveNonStrikerId);
-      const refreshedBowlerAId = innings.currentBowlerAId ?? "";
-      const refreshedBowlerBId = innings.currentBowlerBId ?? "";
       const refreshedOverNumber = Math.floor(Number(innings.legalBalls ?? 0) / 6) + 1;
       const refreshedOverDeliveries = deliveries.filter(
         (delivery: LiveDeliveryView) =>
           delivery.overNumber === refreshedOverNumber,
       );
+      const refreshedBowlerAId = innings.currentBowlerAId ?? "";
+      const refreshedBowlerBId =
+        innings.currentBowlerBId ??
+        (refreshedOverDeliveries.length > 0 ? liveBowlerBId : "");
 
       setLiveBowlerAId(refreshedBowlerAId);
       setLiveBowlerBId(refreshedBowlerBId);
@@ -2168,10 +2170,10 @@ const [resumingMatchId, setResumingMatchId] =
 
   function LiveScoring() {
     const battingTeam = selectedTournament?.teams.find(
-      (team) => team.team.id === teamAId,
+      (team) => team.team.id === liveBattingTeamId,
     );
     const bowlingTeam = selectedTournament?.teams.find(
-      (team) => team.team.id === teamBId,
+      (team) => team.team.id === liveBowlingTeamId,
     );
 
     const legalBalls = liveLegalBalls;
@@ -2315,10 +2317,10 @@ const [resumingMatchId, setResumingMatchId] =
 
     const doubleMode = bowlingMode === "DOUBLE";
     const oddFinalOver = liveOddOvers && currentOverNumber === oversPerInnings;
-    const activeBowlerA = teamBPlayers.find(
+    const activeBowlerA = liveBowlingPlayers.find(
       (player) => player.id === liveBowlerAId,
     );
-    const activeBowlerB = teamBPlayers.find(
+    const activeBowlerB = liveBowlingPlayers.find(
       (player) => player.id === liveBowlerBId,
     );
 
@@ -2363,7 +2365,7 @@ const [resumingMatchId, setResumingMatchId] =
           </div>
           <div className="hidden items-center gap-3 text-sm sm:flex">
             <span className="font-semibold">{selectedTournament?.name ?? "Tournament"}</span>
-            <span className="text-slate-500">â€¢</span>
+            <span className="text-slate-500">•</span>
             <span className="text-slate-300 [color-scheme:dark]">Live Match</span>
           </div>
           <button
@@ -2435,7 +2437,7 @@ const [resumingMatchId, setResumingMatchId] =
   <span>Toss</span>
   <b className="text-right">
     {tossWinnerId
-      ? `${selectedTournament?.teams.find((item) => item.team.id === tossWinnerId)?.team.name ?? "Team"} won Â· elected to ${tossDecision === "BAT" ? "bat" : "bowl"}`
+      ? `${selectedTournament?.teams.find((item) => item.team.id === tossWinnerId)?.team.name ?? "Team"} won · elected to ${tossDecision === "BAT" ? "bat" : "bowl"}`
       : "Not recorded"}
   </b>
 </div>
@@ -2568,7 +2570,7 @@ const [resumingMatchId, setResumingMatchId] =
                   {[liveStriker, liveNonStriker].map((player, index) => {
                     if (!player) return null;
                     const stat = battingStats.find((item) => item.player.id === player.id);
-                    return <div key={player.id} className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm [color-scheme:dark]"><p className="text-xs font-bold uppercase text-slate-500">{index === 0 ? "Now Batting - Striker" : "Now Batting - Non-Striker"}</p><div className="mt-2 flex items-center justify-between gap-3"><div className="min-w-0"><p className="truncate text-lg font-black">{player.name}</p><p className="text-xs text-slate-500">{stat?.runs ?? 0}* ({stat?.balls ?? 0})</p></div><div className="text-right text-xs font-semibold text-slate-500">{stat?.fours ?? 0} Fours â€¢ {stat?.sixes ?? 0} Sixes</div></div></div>;
+                    return <div key={player.id} className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm [color-scheme:dark]"><p className="text-xs font-bold uppercase text-slate-500">{index === 0 ? "Now Batting - Striker" : "Now Batting - Non-Striker"}</p><div className="mt-2 flex items-center justify-between gap-3"><div className="min-w-0"><p className="truncate text-lg font-black">{player.name}</p><p className="text-xs text-slate-500">{stat?.runs ?? 0}* ({stat?.balls ?? 0})</p></div><div className="text-right text-xs font-semibold text-slate-500">{stat?.fours ?? 0} Fours • {stat?.sixes ?? 0} Sixes</div></div></div>;
                   })}
                 </div>
               </main>
@@ -3565,7 +3567,7 @@ late-800 disabled:opacity-50 [color-scheme:dark]"
                       <div className="mb-3">
                         <p className="font-semibold text-slate-200">{tournament.name}</p>
                         <p className="mt-1 text-xs text-slate-500">
-                          {tournament.season ? `${tournament.season} â€¢ ` : ""}
+                          {tournament.season ? `${tournament.season} • ` : ""}
                           {tournament._count.matches} matches
                         </p>
                       </div>
@@ -3737,7 +3739,7 @@ late-800 disabled:opacity-50 [color-scheme:dark]"
                         {innings.totalRuns}/{innings.wickets}
                         {"  "}
                         <span className="text-slate-600">
-                          Â·
+                          ·
                         </span>
                         {"  "}
                         {Math.floor(
@@ -3746,7 +3748,7 @@ late-800 disabled:opacity-50 [color-scheme:dark]"
                         .
                         {innings.legalBalls % 6}
                         {" overs"}
-                        {"  Â·  "}
+                        {"  ·  "}
                         {match.bowlingMode === "DOUBLE"
                           ? "Double Bowler"
                           : "Normal"}
@@ -4206,7 +4208,7 @@ hover:bg-emerald-500/10 [color-scheme:dark]"
               <div className="mt-1 text-xs text-slate-500">
                 {player.battingStyle ||
                   "Batting style N/A"}
-                {" Â· "}
+                {" · "}
                 {player.bowlingStyle ||
                   "Bowling style N/A"}
               </div>

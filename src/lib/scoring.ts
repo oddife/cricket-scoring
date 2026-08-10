@@ -661,13 +661,17 @@ export async function recordPersistentDelivery(
           };
         }
 
+        const firstDeliveryOfOver = overDeliveries.length === 0;
+
         const bowlerA =
-          innings.currentBowlerAId ??
-          currentOverFirstBowler;
+          firstDeliveryOfOver
+            ? currentOverFirstBowler
+            : innings.currentBowlerAId ?? currentOverFirstBowler;
 
         const bowlerB =
-          innings.currentBowlerBId ??
-          currentOverSecondBowler;
+          firstDeliveryOfOver
+            ? null
+            : innings.currentBowlerBId ?? currentOverSecondBowler;
 
         const updated =
           await tx.innings.update({
