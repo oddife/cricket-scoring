@@ -2130,8 +2130,18 @@ const [resumingMatchId, setResumingMatchId] =
       return;
     }
 
-    if (
+    // The final over can be configured as an odd/single-bowler over.
+    // In that case only bowler A is required; there is no bowler B.
+    const oddFinalOver =
+      liveOddOvers &&
+      liveCurrentOver >= oversPerInnings;
+
+    const requiresSecondBowler =
       bowlingMode === "DOUBLE" &&
+      !oddFinalOver;
+
+    if (
+      requiresSecondBowler &&
       (!nextOverBowlerBId ||
         nextOverBowlerAId === nextOverBowlerBId)
     ) {
@@ -2162,7 +2172,7 @@ const [resumingMatchId, setResumingMatchId] =
 
     setLiveBowlerAId(nextOverBowlerAId);
     setLiveBowlerBId(
-      bowlingMode === "DOUBLE"
+      requiresSecondBowler
         ? nextOverBowlerBId
         : "",
     );
@@ -2633,7 +2643,7 @@ const [resumingMatchId, setResumingMatchId] =
                       {liveBowlingPlayers.map((player) => <option key={player.id} value={player.id} disabled={bowlerDisabledForNextOver(player.id)}>{player.name}{bowlerDisabledForNextOver(player.id) ? " (cannot bowl consecutive over)" : ""}</option>)}
                     </select>
                     {doubleMode && !oddFinalOver && <select value={nextOverBowlerBId} onChange={(event) => setNextOverBowlerBId(event.target.value)} className="mt-2 h-11 w-full rounded-lg border border-slate-700 bg-slate-950 px-3 text-white [color-scheme:dark] [color-scheme:dark]"><option value="">Select second bowler</option>{liveBowlingPlayers.map((player) => <option key={player.id} value={player.id} disabled={player.id === nextOverBowlerAId || bowlerDisabledForNextOver(player.id)}>{player.name}</option>)}</select>}
-                    <button type="button" onClick={selectNextOverBowlers} className="mt-3 h-11 w-full rounded-lg bg-blue-600 font-bold text-white hover:bg-blue-700 [color-scheme:dark]">Start Next Over</button>
+                    <button type="button" onClick={selectNextOverBowlers} className="mt-3 h-11 w-full rounded-lg bg-blue-600 font-bold text-white hover:bg-blue-700 [color-scheme:dark]">{oddFinalOver ? "Start Final Over" : "Start Next Over"}</button>
                   </div>
                 )}
               </aside>
