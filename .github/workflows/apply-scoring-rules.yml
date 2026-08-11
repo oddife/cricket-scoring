@@ -1,0 +1,198 @@
+name: Apply scoring rules patch
+
+on:
+  push:
+    branches:
+      - fix/league-live-scorecard
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: fix/league-live-scorecard
+          fetch-depth: 0
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Patch scoring engine and test isolation
+        shell: python
+        run: |
+          from pathlib import Path
+          import re
+
+          # Match setup: only innings 2 and 4 get targets.
+          p = Path("src/lib/match-setup.ts")
+          s = p.read_text(encoding="utf-8")
+          if 'from "../scoring/match-rules"' not in s:
+              s = s.replace(
+                  'import {\n  getMatchPlayers,\n} from "./matches";\n',
+                  'import {\n  getMatchPlayers,\n} from "./matches";\nimport { calculateTarget } from "../scoring/match-rules";\n',
+                  1,
+              )
+          old = '''  const battingTeamPreviousRuns = previousInnings
+    .filter((innings) => innings.battingTeamId === input.battingTeamId)
+    .reduce((sum, innings) => sum + innings.totalRuns, 0);
+
+  const opposingTeamPreviousRuns = previousInnings
+    .filter((innings) => innings.battingTeamId === input.bowlingTeamId)
+    .reduce((sum, innings) => sum + innings.totalRuns, 0);
+
+  // Target is the minimum score required to win. For innings 2 this is
+  // innings 1 score + 1. For innings 4 it is the opponent's aggregate
+  // total minus the batting side's previous aggregate + 1.
+  const target =
+    input.inningsNumber === 1
+      ? null
+      : Math.max(
+          1,
+          opposingTeamPreviousRuns - battingTeamPreviousRuns + 1,
+        );
+'''
+          new = '''  const target = calculateTarget({
+    inningsNumber: input.inningsNumber,
+    inningsPerMatch: match.inningsPerMatch as 2 | 4,
+    battingTeamId: input.battingTeamId,
+    bowlingTeamId: input.bowlingTeamId,
+    previousInnings: previousInnings.map((innings) => ({
+      inningsNumber: innings.inningsNumber,
+      battingTeamId: innings.battingTeamId,
+      totalRuns: innings.totalRuns,
+    })),
+  });
+'''
+          if old not in s:
+              raise SystemExit("match-setup target block not found")
+          s = s.replace(old, new, 1)
+          p.write_text(s, encoding="utf-8")
+
+          # Persistent scorer: target completion and four-innings result rules.
+          p = Path("src/lib/scoring.ts")
+          s = p.read_text(encoding="utf-8")
+          if 'from "../scoring/match-rules"' not in s:
+              s = s.replace(
+                  'import type {\n  DeliveryExtra,\n  WicketType,\n} from "../scoring/types";\n',
+                  'import type {\n  DeliveryExtra,\n  WicketType,\n} from "../scoring/types";\nimport {\n  decideMatchAfterCompletedInnings,\n} from "../scoring/match-rules";\n',
+                  1,
+              )
+
+          s = s.replace(
+              '        match: true,\n',
+              '''        match: {\n          include: {\n            innings: {\n              orderBy: { inningsNumber: "asc" },\n              select: {\n                inningsNumber: true,\n                battingTeamId: true,\n                totalRuns: true,\n              },\n            },\n          },\n        },\n''',
+              1,
+          )
+
+          old = '''  const newLegalBalls =
+    innings.legalBalls +
+    (result.isLegal ? 1 : 0);
+
+  const inningsComplete =
+    newLegalBalls >=
+    innings.match.oversPerInnings * 6;
+'''
+          new = '''  const newLegalBalls =
+    innings.legalBalls +
+    (result.isLegal ? 1 : 0);
+
+  const newTotalRuns =
+    innings.totalRuns + result.runsTotal;
+
+  const overLimitReached =
+    newLegalBalls >=
+    innings.match.oversPerInnings * 6;
+
+  const targetReached =
+    innings.target !== null &&
+    newTotalRuns >= innings.target;
+
+  const inningsComplete =
+    targetReached || overLimitReached;
+
+  const matchDecision = inningsComplete
+    ? decideMatchAfterCompletedInnings({
+        inningsNumber: innings.inningsNumber,
+        inningsPerMatch: innings.match.inningsPerMatch as 2 | 4,
+        battingTeamId: innings.battingTeamId,
+        bowlingTeamId: innings.bowlingTeamId,
+        currentInningsRuns: newTotalRuns,
+        previousInnings: innings.match.innings
+          .filter((item) => item.inningsNumber < innings.inningsNumber)
+          .map((item) => ({
+            inningsNumber: item.inningsNumber,
+            battingTeamId: item.battingTeamId,
+            totalRuns: item.totalRuns,
+          })),
+        target: innings.target,
+      })
+    : null;
+'''
+          if old not in s:
+              raise SystemExit("scoring completion block not found")
+          s = s.replace(old, new, 1)
+
+          old = '''  if (
+    inningsComplete &&
+    innings.inningsNumber === innings.match.inningsPerMatch
+  ) {
+    await prisma.match.update({
+      where: { id: innings.matchId },
+      data: { status: "COMPLETED" },
+    });
+  }
+'''
+          new = '''  if (matchDecision?.completed) {
+    await prisma.match.update({
+      where: { id: innings.matchId },
+      data: {
+        status: "COMPLETED",
+        winnerId: matchDecision.winnerTeamId,
+        result: matchDecision.tie ? "TIE" : "NORMAL",
+      },
+    });
+  }
+'''
+          if old not in s:
+              raise SystemExit("match completion block not found")
+          s = s.replace(old, new, 1)
+          p.write_text(s, encoding="utf-8")
+
+          # Make npm test use an isolated SQLite database.
+          p = Path("package.json")
+          s = p.read_text(encoding="utf-8")
+          s = s.replace('"test": "vitest"', '"test": "node scripts/run-tests.mjs"', 1)
+          p.write_text(s, encoding="utf-8")
+
+          # Test runner is intentionally separate from dev.db.
+          Path("scripts").mkdir(exist_ok=True)
+          Path("scripts/run-tests.mjs").write_text('''import { execFileSync } from "node:child_process";\nimport { existsSync, rmSync } from "node:fs";\n\nconst env = { ...process.env, DATABASE_URL: "file:./test.db", NODE_ENV: "test" };\nif (existsSync("test.db")) rmSync("test.db", { force: true });\nconst npx = process.platform === "win32" ? "npx.cmd" : "npx";\nexecFileSync(npx, ["prisma", "migrate", "deploy"], { stdio: "inherit", env });\nexecFileSync(npx, ["vitest", "--run"], { stdio: "inherit", env });\n''', encoding="utf-8")
+
+          # The workflow is one-shot; its deletion prevents another push-triggered run.
+          Path(".github/workflows/apply-scoring-rules.yml").unlink()
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Generate Prisma Client
+        run: npx prisma generate
+
+      - name: TypeScript check
+        run: npx tsc --noEmit
+
+      - name: Test against isolated database
+        run: npm test
+
+      - name: Commit changes and remove workflow
+        shell: bash
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add src/lib/match-setup.ts src/lib/scoring.ts src/scoring/match-rules.ts src/scoring/match-rules.test.ts src/scoring/delivery.test.ts package.json scripts/run-tests.mjs .github/workflows/apply-scoring-rules.yml
+          git commit -m "fix: apply innings and delivery scoring rules"
+          git push origin fix/league-live-scorecard
