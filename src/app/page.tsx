@@ -2111,6 +2111,11 @@ const [resumingMatchId, setResumingMatchId] =
     setShowCustomDeliveryPanel(false);
 
     if (includeWicket) {
+      if (customDeliveryType !== "WIDE" && customDeliveryType !== "NO_BALL") {
+        setError("A wicket with an extra is currently supported for Wide and No Ball.");
+        return;
+      }
+
       openWicketPanel(customDeliveryType, parsedRuns);
       return;
     }
