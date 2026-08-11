@@ -21,6 +21,7 @@ jobs:
       - name: Verify build
         run: |
           npm ci
+          npx prisma generate
           npm run build
       - name: Commit source patch
         run: |
