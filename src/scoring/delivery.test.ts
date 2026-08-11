@@ -114,4 +114,40 @@ describe("Delivery scoring combinations", () => {
     expect(result.wicket.type).toBe("RUN_OUT");
     expect(result.wicket.dismissedPlayerId).toBe("BATTER_2");
   });
+
+  it("allows a run out on byes and keeps the delivery legal", () => {
+    const result = processDelivery({
+      ...base,
+      runsExtra: 3,
+      extraType: "BYE",
+      isLegal: true,
+      isWicket: true,
+      wicketType: "RUN_OUT",
+      dismissedPlayerId: "BATTER_2",
+    });
+
+    expect(result.runsTotal).toBe(3);
+    expect(result.isLegal).toBe(true);
+    expect(result.wicket.occurred).toBe(true);
+    expect(result.wicket.type).toBe("RUN_OUT");
+    expect(result.wicket.dismissedPlayerId).toBe("BATTER_2");
+  });
+
+  it("allows a run out on leg-byes and keeps the delivery legal", () => {
+    const result = processDelivery({
+      ...base,
+      runsExtra: 2,
+      extraType: "LEG_BYE",
+      isLegal: true,
+      isWicket: true,
+      wicketType: "RUN_OUT",
+      dismissedPlayerId: "BATTER_1",
+    });
+
+    expect(result.runsTotal).toBe(2);
+    expect(result.isLegal).toBe(true);
+    expect(result.wicket.occurred).toBe(true);
+    expect(result.wicket.type).toBe("RUN_OUT");
+    expect(result.wicket.dismissedPlayerId).toBe("BATTER_1");
+  });
 });
