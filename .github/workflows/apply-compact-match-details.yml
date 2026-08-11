@@ -1,0 +1,101 @@
+name: Apply compact match details
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  apply:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Replace only Match Format and status section
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+
+          path = Path("src/app/page.tsx")
+          text = path.read_text(encoding="utf-8")
+
+          start = text.index('                  <div className="mt-4 grid gap-3 md:grid-cols-2">')
+          end = text.index('        <div className="mt-5 space-y-5">', start)
+
+          replacement = '''                  <div className="mt-4 grid gap-3 md:grid-cols-2">
+                    <section>
+                      <h3 className="text-sm font-black uppercase tracking-wide text-slate-500">Match Format</h3>
+                      <dl className="mt-2 grid gap-y-2 text-sm">
+                        <div className="flex justify-between gap-4">
+                          <dt>Overs per Innings</dt>
+                          <dd className="font-bold">{match.oversPerInnings}</dd>
+                        </div>
+                        <div className="flex justify-between gap-4">
+                          <dt>Innings</dt>
+                          <dd className="font-bold">{match.inningsPerMatch}</dd>
+                        </div>
+                      </dl>
+                    </section>
+
+                    <section>
+                      <h3 className="sr-only">Match Details</h3>
+                      <dl className="grid gap-y-2 text-sm">
+                        <div className="flex justify-between gap-4">
+                          <dt>Toss</dt>
+                          <dd className="text-right font-bold">{tossText}</dd>
+                        </div>
+                        <div className="flex justify-between gap-4">
+                          <dt>Bowling</dt>
+                          <dd className="text-right font-bold">{bowlingText}</dd>
+                        </div>
+                      </dl>
+                    </section>
+                  </div>
+
+                  <div className={`mt-3 flex flex-col gap-2 rounded-xl px-3 py-2.5 text-sm font-bold sm:flex-row sm:items-center sm:justify-between ${matchStatus === "COMPLETED" ? "bg-slate-100 text-slate-700" : "bg-emerald-50 text-emerald-700"}`}>
+                    <div className="flex items-center gap-3 whitespace-nowrap">
+                      <span>{matchStatus === "COMPLETED" ? "✓ COMPLETED" : "● LIVE"}</span>
+                      <span>{resultText}</span>
+                    </div>
+                    {target != null && (
+                      <div className="text-xs font-semibold text-slate-700 sm:text-right">
+                        Target for <b>{targetTeam}</b> (batting last) in <b>inning {match.inningsPerMatch}</b>: <b className="text-emerald-700">{target} runs</b>
+                      </div>
+                    )}
+                  </div>
+
+'''
+
+          text = text[:start] + replacement + text[end:]
+          path.write_text(text, encoding="utf-8")
+          PY
+
+      - name: Verify production build
+        run: |
+          npm ci
+          npx prisma generate
+          npm run build
+
+      - name: Commit compact match details
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add src/app/page.tsx
+          if git diff --cached --quiet; then
+            echo "No changes to commit"
+          else
+            git commit -m "fix: compact match format details layout"
+            git push origin main
+          fi
+
+      - name: Remove temporary workflow
+        if: always()
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git rm -f .github/workflows/apply-compact-match-details.yml || true
+          git commit -m "chore: remove temporary layout workflow" || true
+          git push origin main || true
