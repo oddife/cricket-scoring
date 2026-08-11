@@ -31,6 +31,11 @@ const tournamentInclude = {
   },
 };
 
+function integerOrDefault(value: unknown, fallback: number) {
+  const parsed = Number(value);
+  return Number.isInteger(parsed) && parsed >= 0 ? parsed : fallback;
+}
+
 export async function GET() {
   try {
     const tournaments = await prisma.tournament.findMany({
@@ -108,6 +113,13 @@ export async function POST(request: Request) {
       );
     }
 
+    const allowTie = body.allowTie === true;
+    const allowNoResult = body.allowNoResult === true;
+    const winPoints = integerOrDefault(body.winPoints, 2);
+    const lossPoints = integerOrDefault(body.lossPoints, 0);
+    const tiePoints = integerOrDefault(body.tiePoints, 1);
+    const noResultPoints = integerOrDefault(body.noResultPoints, 1);
+
     const user = await getDefaultUser();
 
     const tournament = await prisma.tournament.create({
@@ -119,6 +131,12 @@ export async function POST(request: Request) {
           | "KNOCKOUT"
           | "LEAGUE_KNOCKOUT"
           | "CUSTOM",
+        winPoints,
+        lossPoints,
+        allowTie,
+        tiePoints,
+        allowNoResult,
+        noResultPoints,
         ownerId: user.id,
       },
       include: tournamentInclude,
@@ -195,31 +213,18 @@ export async function DELETE(request: Request) {
     }
 
     await prisma.$transaction(async (tx) => {
-      /*
-       * Match -> Innings -> Delivery -> Wicket
-       * Match -> MatchPlayer
-       *
-       * These relations use cascade deletes in the schema.
-       */
       await tx.match.deleteMany({
         where: {
           tournamentId,
         },
       });
 
-      /*
-       * Remove tournament/team relationships.
-       * The actual Team records remain.
-       */
       await tx.tournamentTeam.deleteMany({
         where: {
           tournamentId,
         },
       });
 
-      /*
-       * Finally delete the tournament.
-       */
       await tx.tournament.delete({
         where: {
           id: tournamentId,
