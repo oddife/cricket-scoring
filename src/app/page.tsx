@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import LeaguePanel from "@/components/LeaguePanel";
 
 type BowlingMode = "NORMAL" | "DOUBLE";
 type InningsMode = 2 | 4;
@@ -4043,6 +4044,8 @@ late-800 disabled:opacity-50 [color-scheme:dark]"
             </p>
           </div>
         </div>
+
+        <LeaguePanel tournamentId={selectedTournament.id} format={selectedTournament.format} />
 
         {/* Live Matches */}
         <div className="mt-8 rounded-2xl border border-emerald-500/30 bg-emerald-500/5 p-6 [color-scheme:dark]">
