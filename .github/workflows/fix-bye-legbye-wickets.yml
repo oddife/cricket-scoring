@@ -1,13 +1,16 @@
 name: Fix bye and leg-bye wickets
 
 on:
-  workflow_dispatch:
+  push:
+    branches:
+      - feature/custom-delivery-runs
 
 permissions:
   contents: write
 
 jobs:
   fix:
+    if: github.actor == 'oddife'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -29,7 +32,7 @@ jobs:
           p.write_text(s,encoding='utf-8')
           PY
           git config user.name github-actions[bot]
-          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+          git config user.email 41898282+users.noreply.github.com
           git add src/app/page.tsx
-          git commit -m "fix: allow run outs on byes and leg-byes"
+          git commit -m "fix: allow run outs on byes and leg-byes" || exit 0
           git push origin HEAD:feature/custom-delivery-runs
