@@ -9,11 +9,7 @@ import {
 const A = "TEAM_A";
 const B = "TEAM_B";
 
-function innings(
-  inningsNumber: number,
-  battingTeamId: string,
-  totalRuns: number,
-) {
+function innings(inningsNumber: number, battingTeamId: string, totalRuns: number) {
   return { inningsNumber, battingTeamId, totalRuns };
 }
 
@@ -36,7 +32,6 @@ describe("multi-innings targets", () => {
 
   it("sets innings 4 target to one when the aggregates are level", () => {
     expect(calculateTarget({ inningsNumber: 4, inningsPerMatch: 4, battingTeamId: B, bowlingTeamId: A, previousInnings: [innings(1, A, 150), innings(2, B, 150), innings(3, A, 0)] })).toBe(1);
-
     expect(calculateTarget({ inningsNumber: 4, inningsPerMatch: 4, battingTeamId: A, bowlingTeamId: B, previousInnings: [innings(1, A, 100), innings(2, B, 100), innings(3, A, 0)] })).toBe(1);
   });
 });
@@ -69,7 +64,7 @@ describe("match result", () => {
   });
 
   it("ends innings 4 with the aggregate winner", () => {
-    expect(decideMatchAfterCompletedInnings({ inningsNumber: 4, inningsPerMatch: 4, battingTeamId: B, bowlingTeamId: A, currentInningsRuns: 50, previousInnings: [innings(1, A, 100), innings(2, B, 80), innings(3, A, 30)], target: 51 })).toEqual({ completed: true, winnerTeamId: B, tie: false });
+    expect(decideMatchAfterCompletedInnings({ inningsNumber: 4, inningsPerMatch: 4, battingTeamId: B, bowlingTeamId: A, currentInningsRuns: 51, previousInnings: [innings(1, A, 100), innings(2, B, 80), innings(3, A, 30)], target: 51 })).toEqual({ completed: true, winnerTeamId: B, tie: false });
   });
 
   it("records a tie when the final aggregates are equal", () => {
