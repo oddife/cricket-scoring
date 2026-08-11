@@ -341,6 +341,12 @@ const [resumingMatchId, setResumingMatchId] =
   const [liveLoading, setLiveLoading] = useState(false);
   const [showWicketPanel, setShowWicketPanel] =
     useState(false);
+  const [manualActionMenu, setManualActionMenu] = useState<"BATSMAN" | "BOWLER" | null>(null);
+  const [manualStrikerId, setManualStrikerId] = useState("");
+  const [manualNonStrikerId, setManualNonStrikerId] = useState("");
+  const [manualBowlerAId, setManualBowlerAId] = useState("");
+  const [manualBowlerBId, setManualBowlerBId] = useState("");
+  const [liveUndoAvailable, setLiveUndoAvailable] = useState(false);
   const [dismissedPlayerId, setDismissedPlayerId] =
     useState("");
   const [runOutDismissedEnd, setRunOutDismissedEnd] =
@@ -1941,6 +1947,7 @@ const [resumingMatchId, setResumingMatchId] =
       setLiveWickets(Number(innings.wickets ?? 0));
       setLiveLegalBalls(Number(innings.legalBalls ?? 0));
       setLiveInningsComplete(innings.status === "COMPLETED");
+      setLiveUndoAvailable(Boolean(innings.undoState));
       setLiveInningsNumber(Number(innings.inningsNumber ?? liveInningsNumber));
       setLiveStrikerId(innings.currentStrikerId ?? liveStrikerId);
       setLiveNonStrikerId(innings.currentNonStrikerId ?? liveNonStrikerId);
@@ -2245,6 +2252,7 @@ const [resumingMatchId, setResumingMatchId] =
         }
       }
 
+      setLiveUndoAvailable(true);
       await refreshLiveInnings(liveInningsId);
 
       setShowWicketPanel(false);
@@ -2263,10 +2271,49 @@ const [resumingMatchId, setResumingMatchId] =
     }
   }
 
+  async function performUndo() {
+    if (!liveInningsId || !liveUndoAvailable) return;
+    if (!window.confirm("Undo the last action? The previous scoring/player state will be restored.")) return;
+    try {
+      setLiveLoading(true); setError("");
+      const response = await fetch(`/api/innings/${liveInningsId}/undo`, { method: "POST" });
+      const data = await response.json();
+      if (!response.ok) throw new Error(data?.error || "Failed to undo action.");
+      setLiveUndoAvailable(false);
+      await refreshLiveInnings(liveInningsId);
+    } catch (err) { setError(err instanceof Error ? err.message : "Failed to undo action."); }
+    finally { setLiveLoading(false); }
+  }
+
+  async function changeLivePlayer(change: "STRIKER" | "NON_STRIKER" | "BOWLER_A" | "BOWLER_B", playerId: string) {
+    if (!liveInningsId || !playerId) return;
+    const isDismissed = dismissedIdsForCurrentInnings().has(playerId);
+    if ((change === "STRIKER" || change === "NON_STRIKER") && isDismissed) {
+      if (!window.confirm("This player was previously dismissed in this innings. Bring them back as a correction?")) return;
+    }
+    const label = change === "STRIKER" ? "striker" : change === "NON_STRIKER" ? "non-striker" : change === "BOWLER_A" ? "Bowler A" : "Bowler B";
+    if (!window.confirm(`Change ${label} to this player? This applies from the next delivery and does not change previous deliveries.`)) return;
+    try {
+      setLiveLoading(true); setError("");
+      const response = await fetch(`/api/innings/${liveInningsId}/manual-state`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ change, playerId }) });
+      const data = await response.json();
+      if (!response.ok) throw new Error(data?.error || "Failed to change player.");
+      setManualActionMenu(null); setLiveUndoAvailable(true);
+      await refreshLiveInnings(liveInningsId);
+    } catch (err) { setError(err instanceof Error ? err.message : "Failed to change player."); }
+    finally { setLiveLoading(false); }
+  }
+
+  function dismissedIdsForCurrentInnings() {
+    return new Set(liveDeliveries.filter((delivery) => delivery.wicket).map((delivery) => delivery.wicket!.dismissedPlayerId));
+  }
+
   async function manuallySwapStrikers() {
     if (!liveInningsId) {
       return;
     }
+
+    if (!window.confirm(`Swap batsmen?\n\nStriker: ${liveStriker?.name ?? "Striker"} ↔ Non-striker: ${liveNonStriker?.name ?? "Non-striker"}`)) return;
 
     try {
       setLiveLoading(true);
@@ -2290,6 +2337,7 @@ const [resumingMatchId, setResumingMatchId] =
       setLiveStrikerId(data.strikerId);
       setLiveNonStrikerId(data.nonStrikerId);
       setLiveNeedsManualSwap(false);
+      setLiveUndoAvailable(true);
     } catch (err) {
       console.error(err);
       setError(
@@ -2878,19 +2926,13 @@ const [resumingMatchId, setResumingMatchId] =
                 </div>
 
                 <div className={`rounded-xl border p-3 shadow-sm transition-all [color-scheme:dark] ${liveNeedsManualSwap ? "border-amber-300 bg-amber-50 ring-2 ring-amber-200/80" : "border-slate-200 bg-white"}`}>
-                  <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-                    <div>
-                      <p className={`text-xs font-black uppercase tracking-wide ${liveNeedsManualSwap ? "text-amber-800" : "text-slate-500"}`}>
-                        {liveNeedsManualSwap ? "Over Complete · Strike Change" : "Batsmen"}
-                      </p>
-                      <p className={`mt-1 text-sm font-semibold ${liveNeedsManualSwap ? "text-amber-900" : "text-slate-700"}`}>
-                        {liveNeedsManualSwap ? "Swap batsmen before recording the next delivery." : "Use this anytime to correct the striker and non-striker."}
-                      </p>
-                    </div>
-                    <button type="button" onClick={() => void manuallySwapStrikers()} disabled={liveLoading} className={`h-11 shrink-0 rounded-lg px-5 font-bold transition disabled:opacity-40 [color-scheme:dark] ${liveNeedsManualSwap ? "bg-amber-500 text-white hover:bg-amber-600 shadow-md" : "border border-slate-300 bg-slate-100 text-slate-800 hover:bg-slate-200"}`}>
-                      ⇄ Swap Batsmen
-                    </button>
+                  <div className="flex flex-wrap items-center gap-2">
+                    <button type="button" onClick={() => void performUndo()} disabled={liveLoading || !liveUndoAvailable} className="h-11 rounded-lg border border-slate-300 bg-slate-100 px-4 font-bold text-slate-800 disabled:cursor-not-allowed disabled:opacity-40">↶ Undo</button>
+                    <button type="button" onClick={() => void manuallySwapStrikers()} disabled={liveLoading || liveInningsComplete || !liveStrikerId || !liveNonStrikerId} className={`h-11 rounded-lg px-4 font-bold transition disabled:opacity-40 ${liveNeedsManualSwap ? "bg-amber-500 text-white hover:bg-amber-600 shadow-md" : "border border-slate-300 bg-slate-100 text-slate-800 hover:bg-slate-200"}`}>⇄ Swap Batsmen</button>
+                    <button type="button" onClick={() => { setManualStrikerId(liveStrikerId); setManualNonStrikerId(liveNonStrikerId); setManualActionMenu("BATSMAN"); }} disabled={liveLoading || liveInningsComplete} className="h-11 rounded-lg border border-slate-300 bg-slate-100 px-4 font-bold text-slate-800 disabled:opacity-40">Change Batsman</button>
+                    <button type="button" onClick={() => { setManualBowlerAId(liveBowlerAId || liveBowlerId); setManualBowlerBId(liveBowlerBId); setManualActionMenu("BOWLER"); }} disabled={liveLoading || liveInningsComplete} className="h-11 rounded-lg border border-slate-300 bg-slate-100 px-4 font-bold text-slate-800 disabled:opacity-40">Change Bowler</button>
                   </div>
+                  {liveNeedsManualSwap && <p className="mt-2 text-xs font-bold text-amber-800">Over complete — check the batsmen and swap ends if required.</p>}
                 </div>
 
                 {/* Delivery controls */}
@@ -2981,6 +3023,30 @@ const [resumingMatchId, setResumingMatchId] =
             </div>
           </div>
         </div>
+
+        {manualActionMenu && (
+          <div className="fixed inset-0 z-[65] flex items-center justify-center bg-black/60 p-4 backdrop-blur-sm">
+            <div className="w-full max-w-lg rounded-2xl bg-white p-6 shadow-2xl [color-scheme:dark]">
+              <div className="flex items-center justify-between gap-3">
+                <div><p className="text-xs font-bold uppercase tracking-wide text-blue-600">Manual Correction</p><h3 className="mt-1 text-2xl font-black">{manualActionMenu === "BATSMAN" ? "Change Batsman" : "Change Bowler"}</h3></div>
+                <button type="button" onClick={() => setManualActionMenu(null)} className="h-9 rounded-lg border border-slate-300 px-3 font-semibold">Close</button>
+              </div>
+              {manualActionMenu === "BATSMAN" ? (
+                <div className="mt-5 space-y-4">
+                  <div><label className="mb-2 block text-sm font-semibold">Striker</label><div className="flex gap-2"><select value={manualStrikerId} onChange={(e) => setManualStrikerId(e.target.value)} className="h-11 min-w-0 flex-1 rounded-lg border border-slate-700 bg-slate-950 px-3 text-white [color-scheme:dark]">{liveBattingPlayers.map((p) => <option key={p.id} value={p.id}>{p.name}{dismissedIdsForCurrentInnings().has(p.id) ? " — DISMISSED" : ""}</option>)}</select><button type="button" onClick={() => void changeLivePlayer("STRIKER", manualStrikerId)} className="h-11 rounded-lg bg-blue-600 px-4 font-bold text-white">Apply</button></div></div>
+                  <div><label className="mb-2 block text-sm font-semibold">Non-striker</label><div className="flex gap-2"><select value={manualNonStrikerId} onChange={(e) => setManualNonStrikerId(e.target.value)} className="h-11 min-w-0 flex-1 rounded-lg border border-slate-700 bg-slate-950 px-3 text-white [color-scheme:dark]">{liveBattingPlayers.map((p) => <option key={p.id} value={p.id}>{p.name}{dismissedIdsForCurrentInnings().has(p.id) ? " — DISMISSED" : ""}</option>)}</select><button type="button" onClick={() => void changeLivePlayer("NON_STRIKER", manualNonStrikerId)} className="h-11 rounded-lg bg-blue-600 px-4 font-bold text-white">Apply</button></div></div>
+                  <p className="text-xs text-slate-500">Previous deliveries remain credited to the original players. A dismissed player can be selected for a correction.</p>
+                </div>
+              ) : (
+                <div className="mt-5 space-y-4">
+                  <div><label className="mb-2 block text-sm font-semibold">Bowler A</label><div className="flex gap-2"><select value={manualBowlerAId} onChange={(e) => setManualBowlerAId(e.target.value)} className="h-11 min-w-0 flex-1 rounded-lg border border-slate-700 bg-slate-950 px-3 text-white [color-scheme:dark]">{liveBowlingPlayers.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}</select><button type="button" onClick={() => void changeLivePlayer("BOWLER_A", manualBowlerAId)} className="h-11 rounded-lg bg-blue-600 px-4 font-bold text-white">Apply</button></div></div>
+                  {doubleMode && !oddFinalOver && <div><label className="mb-2 block text-sm font-semibold">Bowler B</label><div className="flex gap-2"><select value={manualBowlerBId} onChange={(e) => setManualBowlerBId(e.target.value)} className="h-11 min-w-0 flex-1 rounded-lg border border-slate-700 bg-slate-950 px-3 text-white [color-scheme:dark]">{liveBowlingPlayers.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}</select><button type="button" onClick={() => void changeLivePlayer("BOWLER_B", manualBowlerBId)} className="h-11 rounded-lg bg-blue-600 px-4 font-bold text-white">Apply</button></div></div>}
+                  <p className="text-xs text-slate-500">In Double Bowler mode either bowling position can be corrected independently. The change applies from the next delivery.</p>
+                </div>
+              )}
+            </div>
+          </div>
+        )}
 
         {showWicketPanel && (
           <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/60 p-4 backdrop-blur-sm">
