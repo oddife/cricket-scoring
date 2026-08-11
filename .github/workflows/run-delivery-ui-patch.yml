@@ -23,6 +23,7 @@ jobs:
       - name: Verify
         run: |
           npm ci
+          npx prisma generate
           npx tsc --noEmit
           npm test -- --run
 
