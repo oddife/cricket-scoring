@@ -2723,7 +2723,7 @@ const [resumingMatchId, setResumingMatchId] =
         <div className="flex h-16 items-center justify-between border-b border-slate-200 bg-[#07182d] px-5 text-white sm:px-7 [color-scheme:dark]">
           <div className="flex items-center gap-3">
             <button type="button" aria-label="Cricket Scorer" onClick={handleSecretLogoTap} className="flex h-10 w-10 items-center justify-center overflow-hidden rounded-full bg-white shadow-sm">
-              <img src="/logo_nobg.png" alt="Cricket Scorer" className="h-full w-full object-contain" />
+              <img src="/logo_nobg.png" alt="Cricket Scorer" className="h-[135%] w-[135%] object-contain" />
             </button>
             <div className="text-lg font-bold uppercase tracking-tight">Cricket Scorer</div>
           </div>
@@ -3131,7 +3131,7 @@ const [resumingMatchId, setResumingMatchId] =
         <div className="flex items-center justify-between gap-4">
           <div className="flex min-w-0 items-center gap-3">
             <button type="button" aria-label="Cricket Scorer" onClick={handleSecretLogoTap} className="flex h-12 w-12 shrink-0 items-center justify-center overflow-hidden rounded-2xl bg-white shadow-lg transition active:scale-95">
-              <img src="/logo_nobg.png" alt="Cricket Scorer" className="h-full w-full object-contain" />
+              <img src="/logo_nobg.png" alt="Cricket Scorer" className="h-[135%] w-[135%] object-contain" />
             </button>
             <div className="min-w-0">
               <h1 className="truncate text-2xl font-bold tracking-tight sm:text-3xl">Cricket Scorer</h1>
