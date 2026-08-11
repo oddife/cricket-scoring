@@ -2801,18 +2801,27 @@ const [resumingMatchId, setResumingMatchId] =
                 </div>
 
                 <p className="text-xs font-bold uppercase tracking-wide text-slate-600">Match Format</p>
-                <div className="mt-4 space-y-3 text-sm">
-                  <div className="flex justify-between"><span>Overs per Innings</span><b>{oversPerInnings}</b></div>
-                  <div className="flex justify-between"><span>Innings</span><b>{inningsPerMatch}</b></div>
-                  <div className="flex justify-between gap-3">
-  <span>Toss</span>
-  <b className="text-right">
-    {tossWinnerId
-      ? `${selectedTournament?.teams.find((item) => item.team.id === tossWinnerId)?.team.name ?? "Team"} won · elected to ${tossDecision === "BAT" ? "bat" : "bowl"}`
-      : "Not recorded"}
-  </b>
-</div>
-                  <div className="flex justify-between gap-3"><span>Bowling</span><b className="text-right">{doubleMode ? "Double Bowler" : "Normal"}</b></div>
+                <div className="mt-3 grid grid-cols-2 gap-x-4 gap-y-2 text-xs">
+                  <div className="flex items-center justify-between gap-2">
+                    <span>Overs per Innings</span>
+                    <b>{oversPerInnings}</b>
+                  </div>
+                  <div className="flex items-center justify-between gap-2">
+                    <span>Innings</span>
+                    <b>{inningsPerMatch}</b>
+                  </div>
+                  <div className="flex items-start justify-between gap-2">
+                    <span>Toss</span>
+                    <b className="text-right">
+                      {tossWinnerId
+                        ? `${selectedTournament?.teams.find((item) => item.team.id === tossWinnerId)?.team.name ?? "Team"} won · elected to ${tossDecision === "BAT" ? "bat" : "bowl"}`
+                        : "Not recorded"}
+                    </b>
+                  </div>
+                  <div className="flex items-center justify-between gap-2">
+                    <span>Bowling</span>
+                    <b className="text-right">{doubleMode ? "Double Bowler" : "Normal"}</b>
+                  </div>
                 </div>
 
                 <div className="mt-6 rounded-lg bg-emerald-50 px-3 py-3 text-sm font-semibold text-emerald-700">
@@ -5792,7 +5801,6 @@ r-emerald-500 [color-scheme:dark]"
                         </div>
                       </dl>
                     </section>
-
                     <section>
                       <h3 className="sr-only">Match Details</h3>
                       <dl className="grid gap-y-2 text-sm">
