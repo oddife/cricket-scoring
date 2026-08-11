@@ -34,6 +34,25 @@ export async function POST(
       );
     }
 
+    const matchState = await prisma.match.findUnique({
+      where: { id: matchId },
+      select: { status: true },
+    });
+
+    if (!matchState) {
+      return NextResponse.json(
+        { error: "Match not found." },
+        { status: 404 },
+      );
+    }
+
+    if (matchState.status === "COMPLETED" || matchState.status === "ABANDONED") {
+      return NextResponse.json(
+        { error: "Match is already completed and cannot start another innings." },
+        { status: 409 },
+      );
+    }
+
     const battingTeamId =
       typeof body.battingTeamId === "string" ? body.battingTeamId.trim() : "";
     const bowlingTeamId =
