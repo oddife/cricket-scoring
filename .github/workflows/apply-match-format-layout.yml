@@ -18,52 +18,14 @@ jobs:
         run: |
           python3 - <<'PY'
           from pathlib import Path
+          import re
+
           p = Path('src/app/page.tsx')
           s = p.read_text()
 
-          old = '''                  <div className="mt-4 grid gap-3 md:grid-cols-2">
-                    <section>
-                      <h3 className="text-sm font-black uppercase tracking-wide text-slate-500">Match Format</h3>
-                      <dl className="mt-2 grid gap-y-2 text-sm">
-                        <div className="flex justify-between gap-4">
-                          <dt>Overs per Innings</dt>
-                          <dd className="font-bold">{match.oversPerInnings}</dd>
-                        </div>
-                        <div className="flex justify-between gap-4">
-                          <dt>Innings</dt>
-                          <dd className="font-bold">{match.inningsPerMatch}</dd>
-                        </div>
-                      </dl>
-                    </section>
+          pattern = re.compile(r'''                  <div className="mt-4 grid gap-3 md:grid-cols-2">.*?                  </div>\n\n                  <div className=\{`mt-3 flex flex-col gap-2 rounded-xl px-3 py-2\.5 text-sm font-bold sm:flex-row sm:items-center sm:justify-between \$\{matchStatus === "COMPLETED" \? "bg-slate-100 text-slate-700" : "bg-emerald-50 text-emerald-700"\}`\}>.*?                  </div>''', re.S)
 
-                    <section>
-                      <h3 className="sr-only">Match Details</h3>
-                      <dl className="grid gap-y-2 text-sm">
-                        <div className="flex justify-between gap-4">
-                          <dt>Toss</dt>
-                          <dd className="text-right font-bold">{tossText}</dd>
-                        </div>
-                        <div className="flex justify-between gap-4">
-                          <dt>Bowling</dt>
-                          <dd className="text-right font-bold">{bowlingText}</dd>
-                        </div>
-                      </dl>
-                    </section>
-                  </div>
-
-                  <div className={`mt-3 flex flex-col gap-2 rounded-xl px-3 py-2.5 text-sm font-bold sm:flex-row sm:items-center sm:justify-between ${matchStatus === "COMPLETED" ? "bg-slate-100 text-slate-700" : "bg-emerald-50 text-emerald-700"}`}>
-                    <div className="flex items-center gap-3 whitespace-nowrap">
-                      <span>{matchStatus === "COMPLETED" ? "✓ COMPLETED" : "● LIVE"}</span>
-                      <span>{resultText}</span>
-                    </div>
-                    {target != null && (
-                      <div className="text-xs font-semibold text-slate-700 sm:text-right">
-                        Target for <b>{targetTeam}</b> (batting last) in <b>inning {match.inningsPerMatch}</b>: <b className="text-emerald-700">{target} runs</b>
-                      </div>
-                    )}
-                  </div>'''
-
-          new = '''                  <div className="mt-4 rounded-xl border border-slate-200 bg-white px-3 py-2.5">
+          replacement = '''                  <div className="mt-4 rounded-xl border border-slate-200 bg-white px-3 py-2.5">
                     <div className="mb-2 text-xs font-black uppercase tracking-wide text-slate-500">Match Format</div>
                     <div className="grid gap-x-6 gap-y-2 text-sm sm:grid-cols-2">
                       <div className="flex items-center justify-between gap-3">
@@ -97,11 +59,12 @@ jobs:
                     )}
                   </div>'''
 
-          if old not in s:
-              raise SystemExit('Actual scorecard Match Format block was not found; refusing to modify another section.')
-          s = s.replace(old, new, 1)
+          matches = pattern.findall(s)
+          if len(matches) != 1:
+              raise SystemExit(f'Expected exactly one scorecard Match Format/status block, found {len(matches)}')
+          s = pattern.sub(replacement, s, count=1)
           p.write_text(s)
-          print('Actual scorecard Match Format block patched exactly once.')
+          print('Scorecard Match Format block patched exactly once.')
           PY
 
       - name: Verify production build
