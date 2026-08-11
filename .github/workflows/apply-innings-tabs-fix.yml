@@ -27,7 +27,7 @@ jobs:
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add src/app/page.tsx scripts/apply-innings-tabs-v2.py scripts/repair-v2.py .github/workflows/apply-innings-tabs-fix.yml scripts/fix-innings-tabs.js scripts/repair-innings-patch-script.js scripts/run-innings-tabs-patch.txt
-          git rm scripts/apply-innings-tabs-v2.py scripts/repair-v2.py .github/workflows/apply-innings-tabs-fix.yml scripts/fix-innings-tabs.js scripts/repair-innings-patch-script.js scripts/run-innings-tabs-patch.txt
+          git add src/app/page.tsx
+          git rm -f scripts/apply-innings-tabs-v2.py scripts/repair-v2.py .github/workflows/apply-innings-tabs-fix.yml scripts/fix-innings-tabs.js scripts/repair-innings-patch-script.js scripts/run-innings-tabs-patch.txt
           git commit -m "fix: transition innings and enable live sidebar tabs"
           git push
