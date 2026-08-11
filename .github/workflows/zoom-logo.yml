@@ -1,6 +1,8 @@
 name: Test enlarged scorer logo
 
 on:
+  push:
+    branches: [main]
   workflow_dispatch:
 
 permissions:
@@ -22,7 +24,8 @@ jobs:
           new = 'className="h-[135%] w-[135%] object-contain"'
           count = s.count(old)
           if count < 1:
-              raise SystemExit(f'Expected at least one logo image class, found {count}')
+              print('Logo already enlarged or no matching logo class; leaving source unchanged.')
+              raise SystemExit(0)
           s = s.replace(old, new)
           p.write_text(s)
           print(f'Enlarged {count} logo image(s) to 135%.')
@@ -38,9 +41,15 @@ jobs:
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add src/app/page.tsx
-          git commit -m "fix: enlarge scorer logo within header"
-          git push origin main
-          git rm -f .github/workflows/zoom-logo.yml
-          git commit -m "chore: remove logo test workflow"
-          git push origin main
+          if git diff --quiet -- src/app/page.tsx; then
+            git rm -f .github/workflows/zoom-logo.yml
+            git commit -m "chore: remove logo test workflow"
+            git push origin main
+          else
+            git add src/app/page.tsx
+            git commit -m "fix: enlarge scorer logo within header"
+            git push origin main
+            git rm -f .github/workflows/zoom-logo.yml
+            git commit -m "chore: remove logo test workflow"
+            git push origin main
+          fi
