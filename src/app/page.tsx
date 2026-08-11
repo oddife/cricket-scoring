@@ -356,6 +356,15 @@ const [resumingMatchId, setResumingMatchId] =
     useState("");
   const [wicketType, setWicketType] =
     useState("BOWLED");
+  const [showCustomDeliveryPanel, setShowCustomDeliveryPanel] =
+    useState(false);
+  const [customDeliveryType, setCustomDeliveryType] =
+    useState<"BAT" | "WIDE" | "NO_BALL" | "BYE" | "LEG_BYE">("BAT");
+  const [customDeliveryRuns, setCustomDeliveryRuns] = useState("5");
+  const [pendingWicketExtraType, setPendingWicketExtraType] =
+    useState<"WIDE" | "NO_BALL" | null>(null);
+  const [pendingWicketExtraRuns, setPendingWicketExtraRuns] =
+    useState(0);
   const [nextOverBowlerAId, setNextOverBowlerAId] =
     useState("");
   const [nextOverBowlerBId, setNextOverBowlerBId] =
@@ -2065,6 +2074,58 @@ const [resumingMatchId, setResumingMatchId] =
     }
   }
 
+  function openWicketPanel(extraType: "WIDE" | "NO_BALL" | null = null, runsExtra = 0) {
+    setPendingWicketExtraType(extraType);
+    setPendingWicketExtraRuns(runsExtra);
+    setDismissedPlayerId(liveStrikerId);
+    setRunOutDismissedEnd("STRIKER");
+    setReplacementPlayerId("");
+    setWicketType("BOWLED");
+    setShowWicketPanel(true);
+  }
+
+  function openCustomDeliveryPanel() {
+    setCustomDeliveryType("BAT");
+    setCustomDeliveryRuns("5");
+    setShowCustomDeliveryPanel(true);
+  }
+
+  async function submitCustomDelivery(includeWicket = false) {
+    const parsedRuns = Number(customDeliveryRuns);
+
+    if (!Number.isInteger(parsedRuns) || parsedRuns < 0 || parsedRuns > 99) {
+      setError("Runs must be a whole number from 0 to 99.");
+      return;
+    }
+
+    if (customDeliveryType !== "BAT" && parsedRuns < 1) {
+      setError("An extra must be at least 1 run.");
+      return;
+    }
+
+    if (includeWicket && customDeliveryType !== "WIDE" && customDeliveryType !== "NO_BALL") {
+      setError("A wicket with an extra is currently supported for Wide and No Ball.");
+      return;
+    }
+
+    setShowCustomDeliveryPanel(false);
+
+    if (includeWicket) {
+      openWicketPanel(customDeliveryType, parsedRuns);
+      return;
+    }
+
+    if (customDeliveryType === "BAT") {
+      await recordLiveDelivery({ runsBat: parsedRuns });
+      return;
+    }
+
+    await recordLiveDelivery({
+      runsExtra: parsedRuns,
+      extraType: customDeliveryType,
+    });
+  }
+
   async function recordLiveDelivery(input: {
     runsBat?: number;
     runsExtra?: number;
@@ -2257,6 +2318,9 @@ const [resumingMatchId, setResumingMatchId] =
       await refreshLiveInnings(liveInningsId);
 
       setShowWicketPanel(false);
+      setShowCustomDeliveryPanel(false);
+      setPendingWicketExtraType(null);
+      setPendingWicketExtraRuns(0);
       setDismissedPlayerId("");
       setReplacementPlayerId("");
       setRunOutDismissedEnd("STRIKER");
@@ -2314,7 +2378,7 @@ const [resumingMatchId, setResumingMatchId] =
       return;
     }
 
-    if (!window.confirm(`Swap batsmen?\n\nStriker: ${liveStriker?.name ?? "Striker"} ↔ Non-striker: ${liveNonStriker?.name ?? "Non-striker"}`)) return;
+    if (!window.confirm(`Swap batsmen?\n\nStriker: ${liveStriker?.name ?? "Striker"} â†” Non-striker: ${liveNonStriker?.name ?? "Non-striker"}`)) return;
 
     try {
       setLiveLoading(true);
@@ -2730,7 +2794,7 @@ const [resumingMatchId, setResumingMatchId] =
           </div>
           <div className="hidden items-center gap-3 text-sm sm:flex">
             <span className="font-semibold">{selectedTournament?.name ?? "Tournament"}</span>
-            <span className="text-slate-500">•</span>
+            <span className="text-slate-500">â€¢</span>
             <span className="text-slate-300 [color-scheme:dark]">Live Match</span>
           </div>
           <button
@@ -2777,11 +2841,11 @@ const [resumingMatchId, setResumingMatchId] =
                   <div className="grid grid-cols-[minmax(42px,auto)_minmax(0,1fr)_auto_minmax(0,1fr)_minmax(42px,auto)] items-center gap-1 px-1 text-sm">
                     <span className="truncate font-black text-blue-700">{selectedTournament?.teams.find((item) => item.team.id === teamAId)?.team.shortName ?? "T1"}</span>
                     <div className={`grid min-w-0 ${inningsPerMatch === 4 ? "grid-cols-2" : "grid-cols-1"}`}>
-                      {[1, ...(inningsPerMatch === 4 ? [3] : [])].map((inningNumber) => { const history = liveInningsHistory.find((item) => item.inningsNumber === inningNumber); const isCurrent = liveInningsNumber === inningNumber && liveBattingTeamId === teamAId; const value = isCurrent ? `${liveRuns}/${liveWickets}` : history?.battingTeamId === teamAId ? `${history.totalRuns}/-` : "—/—"; return <div key={`live-a-${inningNumber}`} className="text-center"><div className="whitespace-nowrap font-black text-slate-900">{value}</div><div className="text-[10px] font-medium text-slate-400">({inningNumber === 1 ? 1 : 2})</div></div>; })}
+                      {[1, ...(inningsPerMatch === 4 ? [3] : [])].map((inningNumber) => { const history = liveInningsHistory.find((item) => item.inningsNumber === inningNumber); const isCurrent = liveInningsNumber === inningNumber && liveBattingTeamId === teamAId; const value = isCurrent ? `${liveRuns}/${liveWickets}` : history?.battingTeamId === teamAId ? `${history.totalRuns}/-` : "â€”/â€”"; return <div key={`live-a-${inningNumber}`} className="text-center"><div className="whitespace-nowrap font-black text-slate-900">{value}</div><div className="text-[10px] font-medium text-slate-400">({inningNumber === 1 ? 1 : 2})</div></div>; })}
                     </div>
                     <span className="px-1 text-xs font-black text-slate-400">VS</span>
                     <div className={`grid min-w-0 ${inningsPerMatch === 4 ? "grid-cols-2" : "grid-cols-1"}`}>
-                      {[2, ...(inningsPerMatch === 4 ? [4] : [])].map((inningNumber) => { const history = liveInningsHistory.find((item) => item.inningsNumber === inningNumber); const isCurrent = liveInningsNumber === inningNumber && liveBattingTeamId === teamBId; const value = isCurrent ? `${liveRuns}/${liveWickets}` : history?.battingTeamId === teamBId ? `${history.totalRuns}/-` : "—/—"; return <div key={`live-b-${inningNumber}`} className="text-center"><div className="whitespace-nowrap font-black text-slate-900">{value}</div><div className="text-[10px] font-medium text-slate-400">({inningNumber === 2 ? 1 : 2})</div></div>; })}
+                      {[2, ...(inningsPerMatch === 4 ? [4] : [])].map((inningNumber) => { const history = liveInningsHistory.find((item) => item.inningsNumber === inningNumber); const isCurrent = liveInningsNumber === inningNumber && liveBattingTeamId === teamBId; const value = isCurrent ? `${liveRuns}/${liveWickets}` : history?.battingTeamId === teamBId ? `${history.totalRuns}/-` : "â€”/â€”"; return <div key={`live-b-${inningNumber}`} className="text-center"><div className="whitespace-nowrap font-black text-slate-900">{value}</div><div className="text-[10px] font-medium text-slate-400">({inningNumber === 2 ? 1 : 2})</div></div>; })}
                     </div>
                     <span className="truncate text-right font-black text-emerald-700">{selectedTournament?.teams.find((item) => item.team.id === teamBId)?.team.shortName ?? "T2"}</span>
                   </div>
@@ -2790,7 +2854,7 @@ const [resumingMatchId, setResumingMatchId] =
                 <p className="text-xs font-bold uppercase tracking-wide text-slate-600">Match Format</p>
                 <div className="mt-2 grid grid-cols-2 gap-x-5 gap-y-1.5 text-xs">
                   <div className="flex items-center justify-between gap-2"><span>Overs per Innings</span><b>{oversPerInnings}</b></div>
-                  <div className="flex items-center justify-between gap-2"><span>Toss</span><b className="text-right">{tossWinnerId ? `${selectedTournament?.teams.find((item) => item.team.id === tossWinnerId)?.team.name ?? "Team"} won · elected to ${tossDecision === "BAT" ? "bat" : "bowl"}` : "Not recorded"}</b></div>
+                  <div className="flex items-center justify-between gap-2"><span>Toss</span><b className="text-right">{tossWinnerId ? `${selectedTournament?.teams.find((item) => item.team.id === tossWinnerId)?.team.name ?? "Team"} won Â· elected to ${tossDecision === "BAT" ? "bat" : "bowl"}` : "Not recorded"}</b></div>
                   <div className="flex items-center justify-between gap-2"><span>Innings</span><b>{inningsPerMatch}</b></div>
                   <div className="flex items-center justify-between gap-2"><span>Bowling</span><b className="text-right">{doubleMode ? "Double Bowler" : "Normal"}</b></div>
                 </div>
@@ -2825,7 +2889,7 @@ const [resumingMatchId, setResumingMatchId] =
                     <div>Overs Remaining: <span className="font-bold">{oversRemaining}</span></div>
                     <div>
                       {liveTarget !== null ? (
-                        <>TARGET: <span className="font-black">{liveTarget}</span> · NEED <span className="font-black">{runsNeeded}</span></>
+                        <>TARGET: <span className="font-black">{liveTarget}</span> Â· NEED <span className="font-black">{runsNeeded}</span></>
                       ) : firstInningsLeadOrDeficit !== null ? (
                         <>{firstInningsLeadOrDeficit >= 0 ? "1ST INN LEAD" : "1ST INN DEFICIT"}: <span className="font-black">{Math.abs(firstInningsLeadOrDeficit)}</span></>
                       ) : (
@@ -2907,23 +2971,24 @@ const [resumingMatchId, setResumingMatchId] =
 
                 <div className={`rounded-xl border p-3 shadow-sm transition-all [color-scheme:dark] ${liveNeedsManualSwap ? "border-amber-300 bg-amber-50 ring-2 ring-amber-200/80" : "border-slate-200 bg-white"}`}>
                   <div className="flex flex-wrap items-center gap-2">
-                    <button type="button" onClick={() => void performUndo()} disabled={liveLoading || !liveUndoAvailable} className="h-11 rounded-lg border border-slate-300 bg-slate-100 px-4 font-bold text-slate-800 disabled:cursor-not-allowed disabled:opacity-40">↶ Undo</button>
-                    <button type="button" onClick={() => void manuallySwapStrikers()} disabled={liveLoading || liveInningsComplete || !liveStrikerId || !liveNonStrikerId} className={`h-11 rounded-lg px-4 font-bold transition disabled:opacity-40 ${liveNeedsManualSwap ? "bg-amber-500 text-white hover:bg-amber-600 shadow-md" : "border border-slate-300 bg-slate-100 text-slate-800 hover:bg-slate-200"}`}>⇄ Swap Batsmen</button>
+                    <button type="button" onClick={() => void performUndo()} disabled={liveLoading || !liveUndoAvailable} className="h-11 rounded-lg border border-slate-300 bg-slate-100 px-4 font-bold text-slate-800 disabled:cursor-not-allowed disabled:opacity-40">â†¶ Undo</button>
+                    <button type="button" onClick={() => void manuallySwapStrikers()} disabled={liveLoading || liveInningsComplete || !liveStrikerId || !liveNonStrikerId} className={`h-11 rounded-lg px-4 font-bold transition disabled:opacity-40 ${liveNeedsManualSwap ? "bg-amber-500 text-white hover:bg-amber-600 shadow-md" : "border border-slate-300 bg-slate-100 text-slate-800 hover:bg-slate-200"}`}>â‡„ Swap Batsmen</button>
                     <button type="button" onClick={() => { setManualStrikerId(liveStrikerId); setManualNonStrikerId(liveNonStrikerId); setManualActionMenu("BATSMAN"); }} disabled={liveLoading || liveInningsComplete} className="h-11 rounded-lg border border-slate-300 bg-slate-100 px-4 font-bold text-slate-800 disabled:opacity-40">Change Batsman</button>
                     <button type="button" onClick={() => { setManualBowlerAId(liveBowlerAId || liveBowlerId); setManualBowlerBId(liveBowlerBId); setManualActionMenu("BOWLER"); }} disabled={liveLoading || liveInningsComplete} className="h-11 rounded-lg border border-slate-300 bg-slate-100 px-4 font-bold text-slate-800 disabled:opacity-40">Change Bowler</button>
                   </div>
-                  {liveNeedsManualSwap && <p className="mt-2 text-xs font-bold text-amber-800">Over complete — check the batsmen and swap ends if required.</p>}
+                  {liveNeedsManualSwap && <p className="mt-2 text-xs font-bold text-amber-800">Over complete â€” check the batsmen and swap ends if required.</p>}
                 </div>
 
                 {/* Delivery controls */}
                 <div id="live-deliveries" className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm [color-scheme:dark]">
                   <div className="mb-3 flex items-center justify-between"><p className="text-xs font-bold uppercase tracking-wide text-slate-600">Record Delivery</p><span className="text-xs text-slate-500">{liveBowler?.name ?? "No bowler selected"}</span></div>
-                  <div className="grid grid-cols-3 gap-2 sm:grid-cols-6">
+                  <div className="grid grid-cols-3 gap-2 sm:grid-cols-7">
                     {recordButton("0", "bg-white hover:bg-slate-50", () => void recordLiveDelivery({ runsBat: 0 }))}
                     {recordButton("1", "bg-white hover:bg-slate-50", () => void recordLiveDelivery({ runsBat: 1 }))}
                     {recordButton("2", "bg-white hover:bg-slate-50", () => void recordLiveDelivery({ runsBat: 2 }))}
                     {recordButton("3", "bg-white hover:bg-slate-50", () => void recordLiveDelivery({ runsBat: 3 }))}
                     {recordButton("4", "bg-blue-600 text-white hover:bg-blue-700", () => void recordLiveDelivery({ runsBat: 4 }))}
+                    {recordButton("5", "bg-blue-600 text-white hover:bg-blue-700", () => void recordLiveDelivery({ runsBat: 5 }))}
                     {recordButton("6", "bg-blue-600 text-white hover:bg-blue-700", () => void recordLiveDelivery({ runsBat: 6 }))}
                   </div>
                   <div className="mt-2 grid grid-cols-2 gap-2 sm:grid-cols-4">
@@ -2932,7 +2997,12 @@ const [resumingMatchId, setResumingMatchId] =
                     {recordButton("BYE", "bg-orange-500 text-white hover:bg-orange-600", () => void recordLiveDelivery({ runsExtra: 1, extraType: "BYE" }))}
                     {recordButton("LEG BYE", "bg-orange-500 text-white hover:bg-orange-600", () => void recordLiveDelivery({ runsExtra: 1, extraType: "LEG_BYE" }))}
                   </div>
-                  <button type="button" disabled={liveLoading || liveInningsComplete || !liveBowlerId} onClick={() => { setDismissedPlayerId(liveStrikerId); setRunOutDismissedEnd("STRIKER"); setReplacementPlayerId(""); setWicketType("BOWLED"); setShowWicketPanel(true); }} className="mt-2 h-20 w-full rounded-xl bg-red-500 text-lg font-black text-white hover:bg-red-600 disabled:opacity-40 [color-scheme:dark]">WICKET</button>
+                  <div className="mt-2 grid grid-cols-1 gap-2 sm:grid-cols-3">
+                    {recordButton("MORE RUNS", "bg-slate-800 text-white hover:bg-slate-900", () => openCustomDeliveryPanel())}
+                    {recordButton("WIDE + WICKET", "bg-violet-900 text-white hover:bg-violet-950", () => openWicketPanel("WIDE", 1))}
+                    {recordButton("NO BALL + WICKET", "bg-violet-900 text-white hover:bg-violet-950", () => openWicketPanel("NO_BALL", 1))}
+                  </div>
+                  <button type="button" disabled={liveLoading || liveInningsComplete || !liveBowlerId} onClick={() => openWicketPanel()} className="mt-2 h-20 w-full rounded-xl bg-red-500 text-lg font-black text-white hover:bg-red-600 disabled:opacity-40 [color-scheme:dark]">WICKET</button>
                 </div>
 
                 {/* Now batting */}
@@ -2940,7 +3010,7 @@ const [resumingMatchId, setResumingMatchId] =
                   {[liveStriker, liveNonStriker].map((player, index) => {
                     if (!player) return null;
                     const stat = battingStats.find((item) => item.player.id === player.id);
-                    return <div key={player.id} className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm [color-scheme:dark]"><p className="text-xs font-bold uppercase text-slate-500">{index === 0 ? "Now Batting - Striker" : "Now Batting - Non-Striker"}</p><div className="mt-2 flex items-center justify-between gap-3"><div className="min-w-0"><p className="truncate text-lg font-black">{player.name}</p><p className="text-xs text-slate-500">{stat?.runs ?? 0}* ({stat?.balls ?? 0})</p></div><div className="text-right text-xs font-semibold text-slate-500">{stat?.fours ?? 0} Fours • {stat?.sixes ?? 0} Sixes</div></div></div>;
+                    return <div key={player.id} className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm [color-scheme:dark]"><p className="text-xs font-bold uppercase text-slate-500">{index === 0 ? "Now Batting - Striker" : "Now Batting - Non-Striker"}</p><div className="mt-2 flex items-center justify-between gap-3"><div className="min-w-0"><p className="truncate text-lg font-black">{player.name}</p><p className="text-xs text-slate-500">{stat?.runs ?? 0}* ({stat?.balls ?? 0})</p></div><div className="text-right text-xs font-semibold text-slate-500">{stat?.fours ?? 0} Fours â€¢ {stat?.sixes ?? 0} Sixes</div></div></div>;
                   })}
                 </div>
               </main>
@@ -3013,8 +3083,8 @@ const [resumingMatchId, setResumingMatchId] =
               </div>
               {manualActionMenu === "BATSMAN" ? (
                 <div className="mt-5 space-y-4">
-                  <div><label className="mb-2 block text-sm font-semibold">Striker</label><div className="flex gap-2"><select value={manualStrikerId} onChange={(e) => setManualStrikerId(e.target.value)} className="h-11 min-w-0 flex-1 rounded-lg border border-slate-700 bg-slate-950 px-3 text-white [color-scheme:dark]">{liveBattingPlayers.map((p) => <option key={p.id} value={p.id}>{p.name}{dismissedIdsForCurrentInnings().has(p.id) ? " — DISMISSED" : ""}</option>)}</select><button type="button" onClick={() => void changeLivePlayer("STRIKER", manualStrikerId)} className="h-11 rounded-lg bg-blue-600 px-4 font-bold text-white">Apply</button></div></div>
-                  <div><label className="mb-2 block text-sm font-semibold">Non-striker</label><div className="flex gap-2"><select value={manualNonStrikerId} onChange={(e) => setManualNonStrikerId(e.target.value)} className="h-11 min-w-0 flex-1 rounded-lg border border-slate-700 bg-slate-950 px-3 text-white [color-scheme:dark]">{liveBattingPlayers.map((p) => <option key={p.id} value={p.id}>{p.name}{dismissedIdsForCurrentInnings().has(p.id) ? " — DISMISSED" : ""}</option>)}</select><button type="button" onClick={() => void changeLivePlayer("NON_STRIKER", manualNonStrikerId)} className="h-11 rounded-lg bg-blue-600 px-4 font-bold text-white">Apply</button></div></div>
+                  <div><label className="mb-2 block text-sm font-semibold">Striker</label><div className="flex gap-2"><select value={manualStrikerId} onChange={(e) => setManualStrikerId(e.target.value)} className="h-11 min-w-0 flex-1 rounded-lg border border-slate-700 bg-slate-950 px-3 text-white [color-scheme:dark]">{liveBattingPlayers.map((p) => <option key={p.id} value={p.id}>{p.name}{dismissedIdsForCurrentInnings().has(p.id) ? " â€” DISMISSED" : ""}</option>)}</select><button type="button" onClick={() => void changeLivePlayer("STRIKER", manualStrikerId)} className="h-11 rounded-lg bg-blue-600 px-4 font-bold text-white">Apply</button></div></div>
+                  <div><label className="mb-2 block text-sm font-semibold">Non-striker</label><div className="flex gap-2"><select value={manualNonStrikerId} onChange={(e) => setManualNonStrikerId(e.target.value)} className="h-11 min-w-0 flex-1 rounded-lg border border-slate-700 bg-slate-950 px-3 text-white [color-scheme:dark]">{liveBattingPlayers.map((p) => <option key={p.id} value={p.id}>{p.name}{dismissedIdsForCurrentInnings().has(p.id) ? " â€” DISMISSED" : ""}</option>)}</select><button type="button" onClick={() => void changeLivePlayer("NON_STRIKER", manualNonStrikerId)} className="h-11 rounded-lg bg-blue-600 px-4 font-bold text-white">Apply</button></div></div>
                   <p className="text-xs text-slate-500">Previous deliveries remain credited to the original players. A dismissed player can be selected for a correction.</p>
                 </div>
               ) : (
@@ -3028,11 +3098,104 @@ const [resumingMatchId, setResumingMatchId] =
           </div>
         )}
 
+        {showCustomDeliveryPanel && (
+          <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/60 p-4 backdrop-blur-sm">
+            <div className="w-full max-w-lg rounded-2xl bg-white p-6 shadow-2xl [color-scheme:dark]">
+              <p className="text-xs font-bold uppercase tracking-wide text-blue-600">Custom Delivery</p>
+              <h3 className="mt-1 text-2xl font-black">Record any run value</h3>
+              <p className="mt-2 text-sm text-slate-500">
+                Use this for 5+ bat runs, overthrows, or multiple extras.
+              </p>
+
+              <div className="mt-5 space-y-4">
+                <div>
+                  <label htmlFor="customDeliveryType" className="mb-2 block text-sm font-semibold">Delivery type</label>
+                  <select
+                    id="customDeliveryType"
+                    value={customDeliveryType}
+                    onChange={(event) => setCustomDeliveryType(event.target.value as typeof customDeliveryType)}
+                    className="h-12 w-full rounded-lg border border-slate-700 bg-slate-950 px-3 text-white [color-scheme:dark]"
+                  >
+                    <option value="BAT">Bat runs</option>
+                    <option value="WIDE">Wide runs</option>
+                    <option value="NO_BALL">No-ball runs</option>
+                    <option value="BYE">Bye runs</option>
+                    <option value="LEG_BYE">Leg-bye runs</option>
+                  </select>
+                </div>
+
+                <div>
+                  <label htmlFor="customDeliveryRuns" className="mb-2 block text-sm font-semibold">
+                    {customDeliveryType === "BAT" ? "Bat runs" : "Extra runs"}
+                  </label>
+                  <input
+                    id="customDeliveryRuns"
+                    type="number"
+                    min={customDeliveryType === "BAT" ? 0 : 1}
+                    max={99}
+                    step={1}
+                    inputMode="numeric"
+                    value={customDeliveryRuns}
+                    onChange={(event) => setCustomDeliveryRuns(event.target.value)}
+                    className="h-12 w-full rounded-lg border border-slate-700 bg-slate-950 px-3 text-white [color-scheme:dark]"
+                  />
+                </div>
+
+                <div className="rounded-lg bg-slate-100 p-3 text-sm text-slate-600">
+                  {customDeliveryType === "BAT"
+                    ? "Example: 5 runs from an overthrow."
+                    : customDeliveryType === "WIDE"
+                      ? "Example: a wide that runs for 5 total wides."
+                      : customDeliveryType === "NO_BALL"
+                        ? "Example: 2 no-ball extras."
+                        : customDeliveryType === "BYE"
+                          ? "Example: 4 byes."
+                          : "Example: 3 leg-byes."}
+                </div>
+              </div>
+
+              <div className="mt-6 grid grid-cols-2 gap-3">
+                <button
+                  type="button"
+                  onClick={() => setShowCustomDeliveryPanel(false)}
+                  className="h-12 rounded-lg border border-slate-300 font-semibold [color-scheme:dark]"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  disabled={liveLoading || liveInningsComplete || !liveBowlerId}
+                  onClick={() => void submitCustomDelivery(false)}
+                  className="h-12 rounded-lg bg-blue-600 font-bold text-white disabled:opacity-40 [color-scheme:dark]"
+                >
+                  Record Delivery
+                </button>
+              </div>
+
+              {(customDeliveryType === "WIDE" || customDeliveryType === "NO_BALL") && (
+                <button
+                  type="button"
+                  disabled={liveLoading || liveInningsComplete || !liveBowlerId}
+                  onClick={() => void submitCustomDelivery(true)}
+                  className="mt-3 h-12 w-full rounded-lg bg-violet-700 font-bold text-white disabled:opacity-40 [color-scheme:dark]"
+                >
+                  Continue as {customDeliveryType === "WIDE" ? "Wide" : "No Ball"} + Wicket
+                </button>
+              )}
+            </div>
+          </div>
+        )}
+
         {showWicketPanel && (
           <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/60 p-4 backdrop-blur-sm">
             <div className="w-full max-w-lg rounded-2xl bg-white p-6 shadow-2xl [color-scheme:dark]">
               <p className="text-xs font-bold uppercase tracking-wide text-red-600">Wicket</p>
               <h3 className="mt-1 text-2xl font-black">{liveBattingPlayers.find((player) => player.id === dismissedPlayerId)?.name ?? "Batsman"}</h3>
+              {pendingWicketExtraType && (
+                <p className="mt-2 rounded-lg bg-violet-50 px-3 py-2 text-sm font-semibold text-violet-800">
+                  This delivery will be recorded as {pendingWicketExtraType === "WIDE" ? "Wide" : "No Ball"} + {pendingWicketExtraRuns} extra run{pendingWicketExtraRuns === 1 ? "" : "s"} + wicket.
+                </p>
+              )}
               <div className="mt-5 space-y-4">
                 <div><label htmlFor="wicketType" className="mb-2 block text-sm font-semibold">Wicket type</label><select id="wicketType" value={wicketType} onChange={(event) => { const value = event.target.value; setWicketType(value); if (value !== "RUN_OUT") { setRunOutDismissedEnd("STRIKER"); setDismissedPlayerId(liveStrikerId); } else { setRunOutDismissedEnd("STRIKER"); setDismissedPlayerId(liveStrikerId); } setReplacementPlayerId(""); }} className="h-12 w-full rounded-lg border border-slate-700 bg-slate-950 px-3 text-white [color-scheme:dark] [color-scheme:dark]"><option value="BOWLED" className="bg-slate-950 text-white">Bowled</option><option value="CAUGHT" className="bg-slate-950 text-white">Caught</option><option value="LBW" className="bg-slate-950 text-white">LBW</option><option value="RUN_OUT" className="bg-slate-950 text-white">Run Out</option><option value="STUMPED" className="bg-slate-950 text-white">Stumped</option><option value="HIT_WICKET" className="bg-slate-950 text-white">Hit Wicket</option><option value="OVER_FENCE" className="bg-slate-950 text-white">Over Fence</option></select></div>
                 {wicketType === "RUN_OUT" && (
@@ -3052,7 +3215,7 @@ const [resumingMatchId, setResumingMatchId] =
                 )}
                 <div><label htmlFor="replacementPlayer" className="mb-2 block text-sm font-semibold">Replacement batsman</label><select id="replacementPlayer" value={replacementPlayerId} onChange={(event) => setReplacementPlayerId(event.target.value)} className="h-12 w-full rounded-lg border border-slate-700 bg-slate-950 px-3 text-white [color-scheme:dark] [color-scheme:dark]"><option value="">Select replacement</option>{nextBatsmen.filter((player) => player.id !== dismissedPlayerId).map((player) => <option key={player.id} value={player.id}>{player.name}</option>)}</select></div>
               </div>
-              <div className="mt-6 grid grid-cols-2 gap-3"><button type="button" onClick={() => { setShowWicketPanel(false); setReplacementPlayerId(""); }} className="h-12 rounded-lg border border-slate-300 font-semibold [color-scheme:dark]">Cancel</button><button type="button" disabled={!replacementPlayerId || liveLoading} onClick={() => void recordLiveDelivery({ isWicket: true, wicketType, dismissedPlayerId, replacementPlayerId })} className="h-12 rounded-lg bg-red-500 font-bold text-white disabled:opacity-40 [color-scheme:dark]">Confirm Wicket</button></div>
+              <div className="mt-6 grid grid-cols-2 gap-3"><button type="button" onClick={() => { setShowWicketPanel(false); setPendingWicketExtraType(null); setPendingWicketExtraRuns(0); setReplacementPlayerId(""); }} className="h-12 rounded-lg border border-slate-300 font-semibold [color-scheme:dark]">Cancel</button><button type="button" disabled={!replacementPlayerId || liveLoading} onClick={() => void recordLiveDelivery({ isWicket: true, wicketType, dismissedPlayerId, replacementPlayerId, ...(pendingWicketExtraType ? { runsExtra: pendingWicketExtraRuns, extraType: pendingWicketExtraType } : {}) })} className="h-12 rounded-lg bg-red-500 font-bold text-white disabled:opacity-40 [color-scheme:dark]">Confirm Wicket</button></div>
             </div>
           </div>
         )}
@@ -3704,7 +3867,7 @@ late-800 disabled:opacity-50 [color-scheme:dark]"
         <div className="w-full max-w-lg rounded-3xl border border-slate-700 bg-slate-900 p-6 shadow-2xl sm:p-8 [color-scheme:dark]">
           <div className="mb-6">
             <div className="mb-4 flex h-12 w-12 items-center justify-center rounded-2xl bg-emerald-500/10 text-2xl">
-              ðŸ‘¤
+              Ã°Å¸â€˜Â¤
             </div>
 
             <h2 className="text-xl font-semibold">
@@ -3894,7 +4057,7 @@ late-800 disabled:opacity-50 [color-scheme:dark]"
           {maintenanceMode === "PIN" && (
             <>
               <div className="mb-6">
-                <div className="mb-4 flex h-12 w-12 items-center justify-center rounded-2xl bg-amber-500/10 text-2xl">ðŸ”</div>
+                <div className="mb-4 flex h-12 w-12 items-center justify-center rounded-2xl bg-amber-500/10 text-2xl">Ã°Å¸â€Â</div>
                 <h2 className="text-xl font-semibold">Maintenance</h2>
                 <p className="mt-2 text-sm text-slate-400">Enter the maintenance PIN to continue.</p>
               </div>
@@ -3920,7 +4083,7 @@ late-800 disabled:opacity-50 [color-scheme:dark]"
             <>
               <div className="mb-6 flex items-start justify-between gap-4">
                 <div>
-                  <div className="mb-4 flex h-12 w-12 items-center justify-center rounded-2xl bg-red-500/10 text-2xl">ðŸ› ï¸</div>
+                  <div className="mb-4 flex h-12 w-12 items-center justify-center rounded-2xl bg-red-500/10 text-2xl">Ã°Å¸â€ºÂ Ã¯Â¸Â</div>
                   <h2 className="text-xl font-semibold">Tournament Management</h2>
                   <p className="mt-2 text-sm text-slate-400">Maintenance tools</p>
                 </div>
@@ -3936,7 +4099,7 @@ late-800 disabled:opacity-50 [color-scheme:dark]"
                       <div className="mb-3">
                         <p className="font-semibold text-slate-200">{tournament.name}</p>
                         <p className="mt-1 text-xs text-slate-500">
-                          {tournament.season ? `${tournament.season} • ` : ""}
+                          {tournament.season ? `${tournament.season} â€¢ ` : ""}
                           {tournament._count.matches} matches
                         </p>
                       </div>
@@ -4110,7 +4273,7 @@ late-800 disabled:opacity-50 [color-scheme:dark]"
                         {innings.totalRuns}/{innings.wickets}
                         {"  "}
                         <span className="text-slate-600">
-                          ·
+                          Â·
                         </span>
                         {"  "}
                         {Math.floor(
@@ -4119,7 +4282,7 @@ late-800 disabled:opacity-50 [color-scheme:dark]"
                         .
                         {innings.legalBalls % 6}
                         {" overs"}
-                        {"  ·  "}
+                        {"  Â·  "}
                         {match.bowlingMode === "DOUBLE"
                           ? "Double Bowler"
                           : "Normal"}
@@ -4301,7 +4464,7 @@ hover:bg-emerald-500/10 [color-scheme:dark]"
               </div>
             ) : teamPlayers.length === 0 ? (
               <div className="mt-5 rounded-xl border border-dashed border-slate-800 p-6 text-center [color-scheme:dark]">
-                <div className="text-3xl">ðŸ‘¤</div>
+                <div className="text-3xl">Ã°Å¸â€˜Â¤</div>
 
                 <p className="mt-3 font-medium text-slate-300 [color-scheme:dark]">
                   No players yet
@@ -4373,14 +4536,14 @@ hover:bg-emerald-500/10 [color-scheme:dark]"
                           }}
                           className="flex h-10 items-center gap-2 rounded-xl border border-slate-700 bg-slate-800 px-3 text-sm font-medium text-slate-300 transition hover:border-emerald-500/50 hover:bg-emerald-500/10 hover:text-emerald-400 [color-scheme:dark]"
                         >
-                          <span>âœï¸</span>
+                          <span>Ã¢Å“ÂÃ¯Â¸Â</span>
                           <span className="hidden sm:inline">
                             Edit
                           </span>
                         </button>
 
                         <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-slate-800 text-lg">
-                          ðŸ‘¤
+                          Ã°Å¸â€˜Â¤
                         </div>
                       </div>
                     </div>
@@ -4579,7 +4742,7 @@ hover:bg-emerald-500/10 [color-scheme:dark]"
               <div className="mt-1 text-xs text-slate-500">
                 {player.battingStyle ||
                   "Batting style N/A"}
-                {" · "}
+                {" Â· "}
                 {player.bowlingStyle ||
                   "Bowling style N/A"}
               </div>
@@ -4773,7 +4936,7 @@ hover:bg-emerald-500/10 [color-scheme:dark]"
           >
             {loadingMatchPlayers
               ? "Saving Players..."
-              : "Continue to Opening Players â†’"}
+              : "Continue to Opening Players Ã¢â€ â€™"}
           </button>
         </div>
       </section>
@@ -5203,7 +5366,7 @@ hover:bg-emerald-500/10 [color-scheme:dark]"
         >
           {loadingStartInnings
             ? "Starting Innings..."
-            : "Start Innings â†’"}
+            : "Start Innings Ã¢â€ â€™"}
         </button>
       </div>
     </section>
@@ -5662,7 +5825,7 @@ r-emerald-500 [color-scheme:dark]"
               const playerName = (id: string) => match.players.find((item) => item.playerId === id)?.player.name ?? "Player";
               const teamAInnings = match.innings.filter((item) => item.battingTeamId === match.teamA.id).sort((a, b) => a.inningsNumber - b.inningsNumber);
               const teamBInnings = match.innings.filter((item) => item.battingTeamId === match.teamB.id).sort((a, b) => a.inningsNumber - b.inningsNumber);
-              const scoreText = (inning: (typeof match.innings)[number] | undefined) => inning ? `${inning.totalRuns}/${inning.wickets}` : "—/—";
+              const scoreText = (inning: (typeof match.innings)[number] | undefined) => inning ? `${inning.totalRuns}/${inning.wickets}` : "â€”/â€”";
               const orderedInnings = [...match.innings].sort((a, b) => a.inningsNumber - b.inningsNumber);
               const finalInning = orderedInnings[orderedInnings.length - 1];
               const targetInning = match.innings.find((item) => item.target != null) ?? finalInning;
@@ -5670,7 +5833,7 @@ r-emerald-500 [color-scheme:dark]"
               const targetTeam = targetInning ? teamShortName(targetInning.battingTeamId) : "";
               const matchStatus = String(match.status).toUpperCase();
               const resultText = match.winner ? `${match.winner.shortName ?? match.winner.name} won` : matchStatus === "COMPLETED" ? "Match completed" : "In Progress";
-              const tossText = match.tossWinner ? `${match.tossWinner.shortName ?? match.tossWinner.name} won · elected to ${match.tossDecision === "BOWL" ? "bowl" : "bat"}` : "—";
+              const tossText = match.tossWinner ? `${match.tossWinner.shortName ?? match.tossWinner.name} won Â· elected to ${match.tossDecision === "BOWL" ? "bowl" : "bat"}` : "â€”";
               const bowlingText = match.bowlingMode === "DOUBLE" ? "Double Bowler" : "Normal Bowling";
               const displayInningsNumber = matchStatus === "COMPLETED" ? (orderedInnings.length || 1) : (orderedInnings[orderedInnings.length - 1]?.inningsNumber ?? 1);
 
@@ -5730,7 +5893,7 @@ r-emerald-500 [color-scheme:dark]"
                     <section><h3 className="text-sm font-black uppercase tracking-wide text-slate-500">Match Format</h3><dl className="mt-2 grid gap-y-2 text-sm"><div className="flex justify-between gap-4"><dt>Overs per Innings</dt><dd className="font-bold">{match.oversPerInnings}</dd></div><div className="flex justify-between gap-4"><dt>Innings</dt><dd className="font-bold">{match.inningsPerMatch}</dd></div></dl></section>
                     <section><h3 className="sr-only">Match Details</h3><dl className="grid gap-y-2 text-sm"><div className="flex justify-between gap-4"><dt>Toss</dt><dd className="text-right font-bold">{tossText}</dd></div><div className="flex justify-between gap-4"><dt>Bowling</dt><dd className="text-right font-bold">{bowlingText}</dd></div></dl></section>
                   </div>
-                  <div className={`mt-3 flex flex-col gap-2 rounded-xl px-3 py-2.5 text-sm font-bold sm:flex-row sm:items-center sm:justify-between ${matchStatus === "COMPLETED" ? "bg-slate-100 text-slate-700" : "bg-emerald-50 text-emerald-700"}`}><div className="flex items-center gap-3 whitespace-nowrap"><span>{matchStatus === "COMPLETED" ? "✓ COMPLETED" : "● LIVE"}</span><span>{resultText}</span></div>{target != null && <div className="text-xs font-semibold text-slate-700 sm:text-right">Target for <b>{targetTeam}</b> (batting last) in <b>inning {match.inningsPerMatch}</b>: <b className="text-emerald-700">{target} runs</b></div>}</div>
+                  <div className={`mt-3 flex flex-col gap-2 rounded-xl px-3 py-2.5 text-sm font-bold sm:flex-row sm:items-center sm:justify-between ${matchStatus === "COMPLETED" ? "bg-slate-100 text-slate-700" : "bg-emerald-50 text-emerald-700"}`}><div className="flex items-center gap-3 whitespace-nowrap"><span>{matchStatus === "COMPLETED" ? "âœ“ COMPLETED" : "â— LIVE"}</span><span>{resultText}</span></div>{target != null && <div className="text-xs font-semibold text-slate-700 sm:text-right">Target for <b>{targetTeam}</b> (batting last) in <b>inning {match.inningsPerMatch}</b>: <b className="text-emerald-700">{target} runs</b></div>}</div>
 
         <div className="mt-5 space-y-5">
                     {match.innings.map((i) => {
