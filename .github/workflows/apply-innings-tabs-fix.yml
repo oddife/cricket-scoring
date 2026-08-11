@@ -16,7 +16,7 @@ jobs:
           fetch-depth: 0
       - uses: actions/setup-node@v4
         with:
-          node-version: 20
+          node-version: 24
       - name: Apply source patch
         run: node scripts/fix-innings-tabs.js
       - name: Verify build
@@ -27,7 +27,7 @@ jobs:
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add src/app/page.tsx scripts/fix-innings-tabs.js .github/workflows/apply-innings-tabs-fix.yml
+          git add src/app/page.tsx scripts/fix-innings-tabs.js .github/workflows/apply-innings-tabs-fix.yml scripts/run-innings-tabs-patch.txt
           git rm scripts/fix-innings-tabs.js .github/workflows/apply-innings-tabs-fix.yml scripts/run-innings-tabs-patch.txt
           git commit -m "fix: transition innings and enable live sidebar tabs"
           git push
