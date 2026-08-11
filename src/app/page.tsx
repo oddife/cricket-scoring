@@ -5712,30 +5712,37 @@ r-emerald-500 [color-scheme:dark]"
                     </div>
                   </div>
 
-                  <div className="mt-4 grid gap-5 md:grid-cols-[0.9fr_1.1fr]">
-                    <section>
-                      <h3 className="text-sm font-black uppercase tracking-wide text-slate-500">Match Format</h3>
-                      <dl className="mt-3 space-y-2.5 text-sm">
-                        <div className="flex justify-between gap-4"><dt>Overs per Innings</dt><dd className="font-bold">{match.oversPerInnings}</dd></div>
-                        <div className="flex justify-between gap-4"><dt>Innings</dt><dd className="font-bold">{match.inningsPerMatch}</dd></div>
-                        <div className="flex justify-between gap-4"><dt>Toss</dt><dd className="text-right font-bold">{tossText}</dd></div>
-                        <div className="flex justify-between gap-4"><dt>Bowling</dt><dd className="text-right font-bold">{bowlingText}</dd></div>
-                      </dl>
-                    </section>
+                  <div className="mt-4 grid gap-3 md:grid-cols-2">
+          <section>
+            <h3 className="text-sm font-black uppercase tracking-wide text-slate-500">Match Format</h3>
+            <dl className="mt-2 grid gap-y-2 text-sm sm:grid-cols-2 sm:gap-x-8">
+              <div className="flex justify-between gap-3"><dt>Overs per Innings</dt><dd className="font-bold">{match.oversPerInnings}</dd></div>
+              <div className="flex justify-between gap-3"><dt>Innings</dt><dd className="font-bold">{match.inningsPerMatch}</dd></div>
+            </dl>
+          </section>
 
-                    <section>
-                      <h3 className="text-sm font-black uppercase tracking-wide text-slate-500">Innings Details</h3>
-                      <div className="mt-3 overflow-hidden rounded-lg border border-slate-200">
-                        <div className="grid grid-cols-2 bg-slate-50"><div className="border-r border-slate-200 px-3 py-2 text-center font-bold text-blue-700">{teamShortName(match.teamA.id)}</div><div className="px-3 py-2 text-center font-bold text-emerald-700">{teamShortName(match.teamB.id)}</div></div>
-                        {Array.from({ length: match.inningsPerMatch === 4 ? 2 : 1 }, (_, index) => <div key={index} className="grid grid-cols-2 border-t border-slate-200 text-sm"><div className="flex justify-between gap-3 border-r border-slate-200 px-3 py-2.5"><span>Inning {index + 1}</span><b>{scoreText(teamAInnings[index])}</b></div><div className="flex justify-between gap-3 px-3 py-2.5"><span>Inning {index + 1}</span><b>{scoreText(teamBInnings[index])}</b></div></div>)}
-                      </div>
-                      {target != null && <div className="mt-3 border-t border-slate-300 pt-2 text-sm">Target for <b>{targetTeam}</b> (batting last) in <b>inning {match.inningsPerMatch}</b>: <b className="text-emerald-700">{target} runs</b></div>}
-                    </section>
-                  </div>
+          <section>
+            <h3 className="sr-only">Match Details</h3>
+            <dl className="mt-5 grid grid-cols-[auto_1fr] gap-x-4 gap-y-2 text-sm">
+              <dt>Toss</dt><dd className="text-right font-bold">{tossText}</dd>
+              <dt>Bowling</dt><dd className="text-right font-bold">{bowlingText}</dd>
+            </dl>
+          </section>
+        </div>
 
-                  <div className={`mt-4 rounded-xl px-3 py-2.5 text-sm font-bold ${matchStatus === "COMPLETED" ? "bg-slate-100 text-slate-700" : "bg-emerald-50 text-emerald-700"}`}><span className="mr-3">{matchStatus === "COMPLETED" ? "✓ COMPLETED" : "● LIVE"}</span><span>{resultText}</span></div>
+        <div className={`mt-3 flex flex-col gap-2 rounded-xl px-3 py-2.5 text-sm font-bold sm:flex-row sm:items-center sm:justify-between ${matchStatus === "COMPLETED" ? "bg-slate-100 text-slate-700" : "bg-emerald-50 text-emerald-700"}`}>
+          <div className="flex items-center gap-3 whitespace-nowrap">
+            <span>{matchStatus === "COMPLETED" ? "✓ COMPLETED" : "● LIVE"}</span>
+            <span>{resultText}</span>
+          </div>
+          {target != null && (
+            <div className="text-xs font-semibold text-slate-700 sm:text-right">
+              Target for <b>{targetTeam}</b> (batting last) in <b>inning {match.inningsPerMatch}</b>: <b className="text-emerald-700">{target} runs</b>
+            </div>
+          )}
+        </div>
 
-                  <div className="mt-5 space-y-5">
+        <div className="mt-5 space-y-5">
                     {match.innings.map((i) => {
                       const bat = new Map<string, { r: number; b: number; f: number; s: number; out: boolean; d: string }>();
                       const bowl = new Map<string, { b: number; r: number; w: number }>();
