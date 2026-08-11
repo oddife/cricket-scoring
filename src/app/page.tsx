@@ -5713,34 +5713,46 @@ r-emerald-500 [color-scheme:dark]"
                   </div>
 
                   <div className="mt-4 grid gap-3 md:grid-cols-2">
-          <section>
-            <h3 className="text-sm font-black uppercase tracking-wide text-slate-500">Match Format</h3>
-            <dl className="mt-2 grid gap-y-2 text-sm sm:grid-cols-2 sm:gap-x-8">
-              <div className="flex justify-between gap-3"><dt>Overs per Innings</dt><dd className="font-bold">{match.oversPerInnings}</dd></div>
-              <div className="flex justify-between gap-3"><dt>Innings</dt><dd className="font-bold">{match.inningsPerMatch}</dd></div>
-            </dl>
-          </section>
+                    <section>
+                      <h3 className="text-sm font-black uppercase tracking-wide text-slate-500">Match Format</h3>
+                      <dl className="mt-2 grid gap-y-2 text-sm">
+                        <div className="flex justify-between gap-4">
+                          <dt>Overs per Innings</dt>
+                          <dd className="font-bold">{match.oversPerInnings}</dd>
+                        </div>
+                        <div className="flex justify-between gap-4">
+                          <dt>Innings</dt>
+                          <dd className="font-bold">{match.inningsPerMatch}</dd>
+                        </div>
+                      </dl>
+                    </section>
 
-          <section>
-            <h3 className="sr-only">Match Details</h3>
-            <dl className="mt-5 grid grid-cols-[auto_1fr] gap-x-4 gap-y-2 text-sm">
-              <dt>Toss</dt><dd className="text-right font-bold">{tossText}</dd>
-              <dt>Bowling</dt><dd className="text-right font-bold">{bowlingText}</dd>
-            </dl>
-          </section>
-        </div>
+                    <section>
+                      <h3 className="sr-only">Match Details</h3>
+                      <dl className="grid gap-y-2 text-sm">
+                        <div className="flex justify-between gap-4">
+                          <dt>Toss</dt>
+                          <dd className="text-right font-bold">{tossText}</dd>
+                        </div>
+                        <div className="flex justify-between gap-4">
+                          <dt>Bowling</dt>
+                          <dd className="text-right font-bold">{bowlingText}</dd>
+                        </div>
+                      </dl>
+                    </section>
+                  </div>
 
-        <div className={`mt-3 flex flex-col gap-2 rounded-xl px-3 py-2.5 text-sm font-bold sm:flex-row sm:items-center sm:justify-between ${matchStatus === "COMPLETED" ? "bg-slate-100 text-slate-700" : "bg-emerald-50 text-emerald-700"}`}>
-          <div className="flex items-center gap-3 whitespace-nowrap">
-            <span>{matchStatus === "COMPLETED" ? "✓ COMPLETED" : "● LIVE"}</span>
-            <span>{resultText}</span>
-          </div>
-          {target != null && (
-            <div className="text-xs font-semibold text-slate-700 sm:text-right">
-              Target for <b>{targetTeam}</b> (batting last) in <b>inning {match.inningsPerMatch}</b>: <b className="text-emerald-700">{target} runs</b>
-            </div>
-          )}
-        </div>
+                  <div className={`mt-3 flex flex-col gap-2 rounded-xl px-3 py-2.5 text-sm font-bold sm:flex-row sm:items-center sm:justify-between ${matchStatus === "COMPLETED" ? "bg-slate-100 text-slate-700" : "bg-emerald-50 text-emerald-700"}`}>
+                    <div className="flex items-center gap-3 whitespace-nowrap">
+                      <span>{matchStatus === "COMPLETED" ? "✓ COMPLETED" : "● LIVE"}</span>
+                      <span>{resultText}</span>
+                    </div>
+                    {target != null && (
+                      <div className="text-xs font-semibold text-slate-700 sm:text-right">
+                        Target for <b>{targetTeam}</b> (batting last) in <b>inning {match.inningsPerMatch}</b>: <b className="text-emerald-700">{target} runs</b>
+                      </div>
+                    )}
+                  </div>
 
         <div className="mt-5 space-y-5">
                     {match.innings.map((i) => {
