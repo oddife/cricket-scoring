@@ -362,7 +362,7 @@ const [resumingMatchId, setResumingMatchId] =
     useState<"BAT" | "WIDE" | "NO_BALL" | "BYE" | "LEG_BYE">("BAT");
   const [customDeliveryRuns, setCustomDeliveryRuns] = useState("5");
   const [pendingWicketExtraType, setPendingWicketExtraType] =
-    useState<"WIDE" | "NO_BALL" | null>(null);
+    useState<"WIDE" | "NO_BALL" | "BYE" | "LEG_BYE" | null>(null);
   const [pendingWicketExtraRuns, setPendingWicketExtraRuns] =
     useState(0);
   const [nextOverBowlerAId, setNextOverBowlerAId] =
@@ -2074,7 +2074,7 @@ const [resumingMatchId, setResumingMatchId] =
     }
   }
 
-  function openWicketPanel(extraType: "WIDE" | "NO_BALL" | null = null, runsExtra = 0) {
+  function openWicketPanel(extraType: "WIDE" | "NO_BALL" | "BYE" | "LEG_BYE" | null = null, runsExtra = 0) {
     setPendingWicketExtraType(extraType);
     setPendingWicketExtraRuns(runsExtra);
     setDismissedPlayerId(liveStrikerId);
@@ -2103,20 +2103,15 @@ const [resumingMatchId, setResumingMatchId] =
       return;
     }
 
-    if (includeWicket && customDeliveryType !== "WIDE" && customDeliveryType !== "NO_BALL") {
-      setError("A wicket with an extra is currently supported for Wide and No Ball.");
-      return;
-    }
-
     setShowCustomDeliveryPanel(false);
 
     if (includeWicket) {
-      if (customDeliveryType !== "WIDE" && customDeliveryType !== "NO_BALL") {
-        setError("A wicket with an extra is currently supported for Wide and No Ball.");
-        return;
-      }
+      const wicketExtraType =
+        customDeliveryType === "BAT" ? null : customDeliveryType;
+      const wicketExtraRuns =
+        customDeliveryType === "BAT" ? 0 : parsedRuns;
 
-      openWicketPanel(customDeliveryType, parsedRuns);
+      openWicketPanel(wicketExtraType, wicketExtraRuns);
       return;
     }
 
