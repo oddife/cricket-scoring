@@ -1,0 +1,36 @@
+name: Apply delivery UI and resume fix
+
+on:
+  push:
+    branches:
+      - feature/custom-delivery-runs
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: feature/custom-delivery-runs
+          fetch-depth: 0
+
+      - name: Apply patch
+        run: python scripts/fix_delivery_ui_resume.py
+
+      - name: Verify
+        run: |
+          npm ci
+          npx tsc --noEmit
+          npm test -- --run
+
+      - name: Commit and clean up
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add src/app/page.tsx
+          git rm scripts/fix_delivery_ui_resume.py .github/workflows/run-delivery-ui-patch.yml
+          git commit -m "fix: improve custom delivery wickets and resume bowling"
+          git push origin HEAD:feature/custom-delivery-runs
