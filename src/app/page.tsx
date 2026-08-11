@@ -1212,33 +1212,74 @@ const [resumingMatchId, setResumingMatchId] =
       setLiveNonStrikerId(
         currentInnings.currentNonStrikerId ?? "",
       );
-      setLiveBowlerAId(
-        currentInnings.currentBowlerAId ?? "",
-      );
-      setLiveBowlerBId(
-        currentInnings.currentBowlerBId ?? "",
-      );
-      setLiveBowlerId(
+      const resumedDeliveries = Array.isArray(currentInnings.deliveries)
+        ? currentInnings.deliveries
+        : [];
+      const lastResumedDelivery =
+        resumedDeliveries[resumedDeliveries.length - 1] ?? null;
+      const currentOverNumberFromData =
+        lastResumedDelivery?.overNumber ?? 1;
+      const currentOverDeliveriesFromData =
+        resumedDeliveries.filter(
+          (delivery: { overNumber: number }) =>
+            delivery.overNumber === currentOverNumberFromData,
+        );
+      const currentOverLegalBallsFromData =
+        currentOverDeliveriesFromData.filter(
+          (delivery: { isLegal: boolean }) => delivery.isLegal,
+        ).length;
+
+      const observedCurrentOverBowlers = [
+        ...new Set(
+          currentOverDeliveriesFromData
+            .map((delivery: { bowlerId: string }) => delivery.bowlerId)
+            .filter(Boolean),
+        ),
+      ];
+
+      const resumedBowlerAId =
+        observedCurrentOverBowlers[0] ??
         currentInnings.currentBowlerAId ??
-          currentInnings.currentBowlerBId ??
-          "",
-      );
+        currentInnings.currentBowlerBId ??
+        "";
+      const resumedBowlerBId =
+        observedCurrentOverBowlers[1] ??
+        currentInnings.currentBowlerBId ??
+        (resumedBowlerAId !== currentInnings.currentBowlerAId
+          ? currentInnings.currentBowlerAId
+          : "") ??
+        "";
+
+      setLiveBowlerAId(resumedBowlerAId);
+      setLiveBowlerBId(resumedBowlerBId);
+
+      const resumedCurrentBowlerId =
+        bowlingMode === "DOUBLE" &&
+        !liveOddOvers &&
+        resumedBowlerAId &&
+        resumedBowlerBId
+          ? currentOverDeliveriesFromData.length % 2 === 0
+            ? resumedBowlerAId
+            : resumedBowlerBId
+          : resumedBowlerAId || resumedBowlerBId;
+
+      setLiveBowlerId(resumedCurrentBowlerId);
       setLivePreviousBowlerAId(
         currentInnings.previousOverBowlerAId ?? "",
       );
       setLivePreviousBowlerBId(
         currentInnings.previousOverBowlerBId ?? "",
       );
-      setLiveDeliveryCount(
-        Number(currentInnings.legalBalls ?? 0) % 6,
-      );
+      setLiveDeliveryCount(currentOverDeliveriesFromData.length);
       setLiveCurrentOver(
-        Math.floor(
-          Number(currentInnings.legalBalls ?? 0) / 6,
-        ) + 1,
+        lastResumedDelivery && currentOverLegalBallsFromData < 6
+          ? currentOverNumberFromData
+          : currentOverNumberFromData + 1,
       );
       setLiveCurrentBall(
-        (Number(currentInnings.legalBalls ?? 0) % 6) + 1,
+        lastResumedDelivery && currentOverLegalBallsFromData < 6
+          ? currentOverLegalBallsFromData + 1
+          : 1,
       );
       setLiveInningsComplete(
         currentInnings.status === "COMPLETED",
@@ -3029,10 +3070,21 @@ const [resumingMatchId, setResumingMatchId] =
                     {recordButton("BYE", "bg-orange-600 text-white hover:bg-orange-700", () => openExtraDeliveryPanel("BYE"))}
                     {recordButton("LEG BYE", "bg-orange-600 text-white hover:bg-orange-700", () => openExtraDeliveryPanel("LEG_BYE"))}
                   </div>
-                  <div className="mt-2 grid grid-cols-1 gap-2 sm:grid-cols-3">
-                    {recordButton("MORE RUNS", "bg-slate-800 text-white hover:bg-slate-900 col-span-1", () => openCustomDeliveryPanel())}
+                  <div className="mt-2 grid grid-cols-3 gap-2">
+                    <button
+                      type="button"
+                      disabled={liveLoading || liveInningsComplete || !liveBowlerId}
+                      onClick={() => openWicketPanel()}
+                      className="col-span-2 h-20 rounded-xl bg-red-500 text-lg font-black text-white hover:bg-red-600 disabled:opacity-40 [color-scheme:dark]"
+                    >
+                      WICKET
+                    </button>
+                    {recordButton(
+                      "MORE RUNS",
+                      "col-span-1 bg-slate-800 text-white hover:bg-slate-900 h-20",
+                      () => openCustomDeliveryPanel(),
+                    )}
                   </div>
-                  <button type="button" disabled={liveLoading || liveInningsComplete || !liveBowlerId} onClick={() => openWicketPanel()} className="mt-2 h-20 w-full rounded-xl bg-red-500 text-lg font-black text-white hover:bg-red-600 disabled:opacity-40 [color-scheme:dark]">WICKET</button>
                 </div>
 
                 {/* Now batting */}
