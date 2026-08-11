@@ -3077,19 +3077,23 @@ const [resumingMatchId, setResumingMatchId] =
   function Header() {
     return (
       <header className="mb-8">
-        <div className="flex items-center justify-between">
-          <div className="flex items-center gap-3">
+        <div className="flex items-center justify-between gap-4">
+          <div className="flex min-w-0 items-center gap-3">
             <button
               type="button"
               aria-label="Cricket Scorer"
               onClick={handleSecretLogoTap}
-              className="flex h-12 w-12 items-center justify-center rounded-2xl bg-emerald-500 text-2xl shadow-lg transition active:scale-95"
+              className="flex h-12 w-12 shrink-0 items-center justify-center overflow-hidden rounded-2xl bg-white shadow-lg transition active:scale-95"
             >
-              ðŸ
+              <img
+                src="/logo_nobg.png"
+                alt="Cricket Scorer"
+                className="h-full w-full object-contain"
+              />
             </button>
 
-            <div>
-              <h1 className="text-2xl font-bold tracking-tight sm:text-3xl">
+            <div className="min-w-0">
+              <h1 className="truncate text-2xl font-bold tracking-tight sm:text-3xl">
                 Cricket Scorer
               </h1>
 
@@ -3097,8 +3101,7 @@ const [resumingMatchId, setResumingMatchId] =
                 {pageMode === "TOURNAMENTS"
                   ? "Tournaments"
                   : pageMode === "DASHBOARD"
-                    ? selectedTournament?.name ||
-                      "Tournament"
+                    ? selectedTournament?.name || "Tournament"
                     : pageMode === "MATCH_SETUP"
                       ? "Match Setup"
                       : pageMode === "PLAYER_SELECTION"
@@ -3114,8 +3117,7 @@ const [resumingMatchId, setResumingMatchId] =
             <button
               type="button"
               onClick={goBackToTournaments}
-              className="rounded-xl border border-slate-700 px-4 py-2 text-sm text-slate-300 transition hover:border-slate-50
-0 hover:bg-slate-900 [color-scheme:dark]"
+              className="shrink-0 rounded-xl border border-slate-700 px-4 py-2 text-sm text-slate-300 transition hover:border-slate-500 hover:bg-slate-900 [color-scheme:dark]"
             >
               {String.fromCharCode(0x2190)} Tournaments
             </button>
