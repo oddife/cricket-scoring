@@ -1,0 +1,46 @@
+name: Test enlarged scorer logo
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Enlarge logo inside existing container
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          p = Path('src/app/page.tsx')
+          s = p.read_text()
+          old = 'className="h-full w-full object-contain"'
+          new = 'className="h-[135%] w-[135%] object-contain"'
+          count = s.count(old)
+          if count < 1:
+              raise SystemExit(f'Expected at least one logo image class, found {count}')
+          s = s.replace(old, new)
+          p.write_text(s)
+          print(f'Enlarged {count} logo image(s) to 135%.')
+          PY
+
+      - name: Verify production build
+        run: |
+          npm ci
+          npx prisma generate
+          npm run build
+
+      - name: Commit and clean up
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add src/app/page.tsx
+          git commit -m "fix: enlarge scorer logo within header"
+          git push origin main
+          git rm -f .github/workflows/zoom-logo.yml
+          git commit -m "chore: remove logo test workflow"
+          git push origin main
