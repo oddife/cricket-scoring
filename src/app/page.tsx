@@ -5676,18 +5676,40 @@ r-emerald-500 [color-scheme:dark]"
                     </div>
                   </div>
 
-                  <div className={`mt-3 grid items-stretch overflow-hidden rounded-xl border border-slate-200 bg-white ${match.inningsPerMatch === 4 ? "grid-cols-[auto_repeat(2,minmax(0,1fr))_auto_repeat(2,minmax(0,1fr))_auto]" : "grid-cols-[auto_minmax(0,1fr)_auto_minmax(0,1fr)_auto]"}`}>
-                    <div className="flex items-center px-3 text-lg font-black text-blue-700">1</div>
-                    {Array.from({ length: match.inningsPerMatch === 4 ? 2 : 1 }, (_, index) => {
-                      const inning = teamAInnings[index];
-                      return <div key={`a-${index}`} className="border-l border-slate-100 px-3 py-2 text-center"><p className="text-base font-black">{scoreText(inning)}</p><p className="text-[10px] text-slate-400">({index + 1})</p></div>;
-                    })}
-                    <div className="flex items-center justify-center px-2 text-sm font-black text-slate-400">VS</div>
-                    {Array.from({ length: match.inningsPerMatch === 4 ? 2 : 1 }, (_, index) => {
-                      const inning = teamBInnings[index];
-                      return <div key={`b-${index}`} className="border-l border-slate-100 px-3 py-2 text-center"><p className="text-base font-black">{scoreText(inning)}</p><p className="text-[10px] text-slate-400">({index + 1})</p></div>;
-                    })}
-                    <div className="flex items-center justify-end px-3 text-lg font-black text-emerald-700">2</div>
+                  <div className="mt-3 grid items-stretch overflow-hidden rounded-xl border border-slate-200 bg-white grid-cols-[auto_minmax(0,1fr)_auto_minmax(0,1fr)_auto]">
+                    <div className="flex items-center px-2 text-sm font-black text-blue-700 sm:px-3 sm:text-base">
+                      {teamShortName(match.teamA.id)}
+                    </div>
+
+                    <div className={`grid min-w-0 ${match.inningsPerMatch === 4 ? "grid-cols-2" : "grid-cols-1"}`}>
+                      {Array.from({ length: match.inningsPerMatch === 4 ? 2 : 1 }, (_, index) => {
+                        const inning = teamAInnings[index];
+                        return (
+                          <div key={`a-${index}`} className="border-l border-slate-100 px-2 py-2 text-center sm:px-3">
+                            <p className="truncate text-sm font-black sm:text-base">{scoreText(inning)}</p>
+                            <p className="text-[10px] text-slate-400">({index + 1})</p>
+                          </div>
+                        );
+                      })}
+                    </div>
+
+                    <div className="flex items-center justify-center px-2 text-xs font-black text-slate-400 sm:text-sm">VS</div>
+
+                    <div className={`grid min-w-0 ${match.inningsPerMatch === 4 ? "grid-cols-2" : "grid-cols-1"}`}>
+                      {Array.from({ length: match.inningsPerMatch === 4 ? 2 : 1 }, (_, index) => {
+                        const inning = teamBInnings[index];
+                        return (
+                          <div key={`b-${index}`} className="border-l border-slate-100 px-2 py-2 text-center sm:px-3">
+                            <p className="truncate text-sm font-black sm:text-base">{scoreText(inning)}</p>
+                            <p className="text-[10px] text-slate-400">({index + 1})</p>
+                          </div>
+                        );
+                      })}
+                    </div>
+
+                    <div className="flex items-center justify-end px-2 text-sm font-black text-emerald-700 sm:px-3 sm:text-base">
+                      {teamShortName(match.teamB.id)}
+                    </div>
                   </div>
 
                   <div className="mt-4 grid gap-5 md:grid-cols-[0.9fr_1.1fr]">
