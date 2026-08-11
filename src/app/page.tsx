@@ -1966,24 +1966,35 @@ const [resumingMatchId, setResumingMatchId] =
         (delivery: LiveDeliveryView) =>
           delivery.overNumber === refreshedOverNumber,
       );
-      const refreshedBowlerAId = innings.currentBowlerAId ?? "";
+      // Rebuild the active bowling pair from the actual deliveries
+      // in the current over. This makes resume/reload deterministic
+      // even if the persisted UI pair is stale.
+      const observedBowlers = [
+        ...new Set(
+          refreshedOverDeliveries.map(
+            (delivery: LiveDeliveryView) => delivery.bowlerId,
+          ),
+        ),
+      ];
+
+      const refreshedBowlerAId =
+        observedBowlers[0] ??
+        innings.currentBowlerAId ??
+        "";
       const refreshedBowlerBId =
+        observedBowlers[1] ??
         innings.currentBowlerBId ??
         liveBowlerBId;
 
       setLiveBowlerAId(refreshedBowlerAId);
       setLiveBowlerBId(refreshedBowlerBId);
-      const lastOverDelivery =
-        refreshedOverDeliveries[refreshedOverDeliveries.length - 1];
 
       const refreshedCurrentBowlerId =
         bowlingMode === "DOUBLE" &&
-        refreshedBowlerAId &&
-        refreshedBowlerBId &&
-        lastOverDelivery
-          ? lastOverDelivery.bowlerId === refreshedBowlerAId
-            ? refreshedBowlerBId
-            : refreshedBowlerAId
+        refreshedOverDeliveries.length > 0
+          ? refreshedOverDeliveries.length % 2 === 0
+            ? refreshedBowlerAId
+            : refreshedBowlerBId
           : refreshedBowlerAId;
 
       setLiveBowlerId(refreshedCurrentBowlerId);
@@ -2378,7 +2389,7 @@ const [resumingMatchId, setResumingMatchId] =
       return;
     }
 
-    if (!window.confirm(`Swap batsmen?\n\nStriker: ${liveStriker?.name ?? "Striker"} â†” Non-striker: ${liveNonStriker?.name ?? "Non-striker"}`)) return;
+    if (!window.confirm(`Swap batsmen?\n\nStriker: ${liveStriker?.name ?? "Striker"}  /  Non-striker: ${liveNonStriker?.name ?? "Non-striker"}`)) return;
 
     try {
       setLiveLoading(true);
@@ -2971,8 +2982,8 @@ const [resumingMatchId, setResumingMatchId] =
 
                 <div className={`rounded-xl border p-3 shadow-sm transition-all [color-scheme:dark] ${liveNeedsManualSwap ? "border-amber-300 bg-amber-50 ring-2 ring-amber-200/80" : "border-slate-200 bg-white"}`}>
                   <div className="flex flex-wrap items-center gap-2">
-                    <button type="button" onClick={() => void performUndo()} disabled={liveLoading || !liveUndoAvailable} className="h-11 rounded-lg border border-slate-300 bg-slate-100 px-4 font-bold text-slate-800 disabled:cursor-not-allowed disabled:opacity-40">â†¶ Undo</button>
-                    <button type="button" onClick={() => void manuallySwapStrikers()} disabled={liveLoading || liveInningsComplete || !liveStrikerId || !liveNonStrikerId} className={`h-11 rounded-lg px-4 font-bold transition disabled:opacity-40 ${liveNeedsManualSwap ? "bg-amber-500 text-white hover:bg-amber-600 shadow-md" : "border border-slate-300 bg-slate-100 text-slate-800 hover:bg-slate-200"}`}>â‡„ Swap Batsmen</button>
+                    <button type="button" onClick={() => void performUndo()} disabled={liveLoading || !liveUndoAvailable} className="h-11 rounded-lg border border-slate-300 bg-slate-100 px-4 font-bold text-slate-800 disabled:cursor-not-allowed disabled:opacity-40">Undo</button>
+                    <button type="button" onClick={() => void manuallySwapStrikers()} disabled={liveLoading || liveInningsComplete || !liveStrikerId || !liveNonStrikerId} className={`h-11 rounded-lg px-4 font-bold transition disabled:opacity-40 ${liveNeedsManualSwap ? "bg-amber-500 text-white hover:bg-amber-600 shadow-md" : "border border-slate-300 bg-slate-100 text-slate-800 hover:bg-slate-200"}`}>Swap Batsmen</button>
                     <button type="button" onClick={() => { setManualStrikerId(liveStrikerId); setManualNonStrikerId(liveNonStrikerId); setManualActionMenu("BATSMAN"); }} disabled={liveLoading || liveInningsComplete} className="h-11 rounded-lg border border-slate-300 bg-slate-100 px-4 font-bold text-slate-800 disabled:opacity-40">Change Batsman</button>
                     <button type="button" onClick={() => { setManualBowlerAId(liveBowlerAId || liveBowlerId); setManualBowlerBId(liveBowlerBId); setManualActionMenu("BOWLER"); }} disabled={liveLoading || liveInningsComplete} className="h-11 rounded-lg border border-slate-300 bg-slate-100 px-4 font-bold text-slate-800 disabled:opacity-40">Change Bowler</button>
                   </div>
@@ -3001,6 +3012,8 @@ const [resumingMatchId, setResumingMatchId] =
                     {recordButton("MORE RUNS", "bg-slate-800 text-white hover:bg-slate-900", () => openCustomDeliveryPanel())}
                     {recordButton("WIDE + WICKET", "bg-violet-900 text-white hover:bg-violet-950", () => openWicketPanel("WIDE", 1))}
                     {recordButton("NO BALL + WICKET", "bg-violet-900 text-white hover:bg-violet-950", () => openWicketPanel("NO_BALL", 1))}
+                    {recordButton("BYE + WICKET", "bg-orange-600 text-white hover:bg-orange-700", () => openWicketPanel("BYE", 1))}
+                    {recordButton("LEG BYE + WICKET", "bg-orange-600 text-white hover:bg-orange-700", () => openWicketPanel("LEG_BYE", 1))}
                   </div>
                   <button type="button" disabled={liveLoading || liveInningsComplete || !liveBowlerId} onClick={() => openWicketPanel()} className="mt-2 h-20 w-full rounded-xl bg-red-500 text-lg font-black text-white hover:bg-red-600 disabled:opacity-40 [color-scheme:dark]">WICKET</button>
                 </div>
@@ -3172,14 +3185,14 @@ const [resumingMatchId, setResumingMatchId] =
                 </button>
               </div>
 
-              {(customDeliveryType === "WIDE" || customDeliveryType === "NO_BALL") && (
+              {customDeliveryType !== "BAT" && (
                 <button
                   type="button"
                   disabled={liveLoading || liveInningsComplete || !liveBowlerId}
                   onClick={() => void submitCustomDelivery(true)}
                   className="mt-3 h-12 w-full rounded-lg bg-violet-700 font-bold text-white disabled:opacity-40 [color-scheme:dark]"
                 >
-                  Continue as {customDeliveryType === "WIDE" ? "Wide" : "No Ball"} + Wicket
+                  Continue as {customDeliveryType === "WIDE" ? "Wide" : customDeliveryType === "NO_BALL" ? "No Ball" : customDeliveryType === "BYE" ? "Bye" : "Leg Bye"} + Wicket
                 </button>
               )}
             </div>
@@ -3193,7 +3206,7 @@ const [resumingMatchId, setResumingMatchId] =
               <h3 className="mt-1 text-2xl font-black">{liveBattingPlayers.find((player) => player.id === dismissedPlayerId)?.name ?? "Batsman"}</h3>
               {pendingWicketExtraType && (
                 <p className="mt-2 rounded-lg bg-violet-50 px-3 py-2 text-sm font-semibold text-violet-800">
-                  This delivery will be recorded as {pendingWicketExtraType === "WIDE" ? "Wide" : "No Ball"} + {pendingWicketExtraRuns} extra run{pendingWicketExtraRuns === 1 ? "" : "s"} + wicket.
+                  This delivery will be recorded as {pendingWicketExtraType === "WIDE" ? "Wide" : pendingWicketExtraType === "NO_BALL" ? "No Ball" : pendingWicketExtraType === "BYE" ? "Bye" : "Leg Bye"} + {pendingWicketExtraRuns} extra run{pendingWicketExtraRuns === 1 ? "" : "s"} + wicket.
                 </p>
               )}
               <div className="mt-5 space-y-4">
