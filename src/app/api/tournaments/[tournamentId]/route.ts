@@ -3,6 +3,23 @@ import { prisma } from "@/lib/prisma";
 
 type RouteContext = { params: Promise<{ tournamentId: string }> };
 
+const include = {
+  teams: { include: { team: true } },
+  _count: { select: { matches: true } },
+  award: { include: { awardedPlayer: true, suggestedPlayers: true } },
+};
+
+export async function GET(_request: Request, { params }: RouteContext) {
+  try {
+    const { tournamentId } = await params;
+    const tournament = await prisma.tournament.findUnique({ where: { id: tournamentId }, include });
+    if (!tournament) return NextResponse.json({ error: "Tournament not found." }, { status: 404 });
+    return NextResponse.json(tournament);
+  } catch (error) {
+    return NextResponse.json({ error: error instanceof Error ? error.message : "Failed to load tournament." }, { status: 500 });
+  }
+}
+
 export async function PATCH(request: Request, { params }: RouteContext) {
   try {
     const { tournamentId } = await params;
@@ -26,7 +43,7 @@ export async function PATCH(request: Request, { params }: RouteContext) {
         allowNoResult: body.allowNoResult === true,
         noResultPoints: integer(body.noResultPoints, tournament.noResultPoints),
       },
-      include: { teams: { include: { team: true } }, _count: { select: { matches: true } } },
+      include,
     });
 
     return NextResponse.json(updated);
