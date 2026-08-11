@@ -2,17 +2,15 @@ from pathlib import Path
 
 path = Path("scripts/apply-innings-tabs-v2.py")
 text = path.read_text()
-start = text.index("replace_once(\n'''        <div className=\\\"grid min-h")
-end = text.index("replace_once(\n'''              <aside className", start)
+start_marker = 'replace_once(\n\'\'\'        <div className="grid min-h'
+end_marker = 'replace_once(\n\'\'\'              <aside className'
+start = text.index(start_marker)
+end = text.index(end_marker, start)
 
-lines = [
+new_lines = [
     "import re",
     "",
-    "sidebar_pattern = re.compile(",
-    "    r'<div className=\"grid min-h-\\\\[calc\\\\(100vh-10rem\\\\)\\\\] lg:grid-cols-\\\\[150px_minmax\\\\(0,1fr\\\\)\\\\]\">\\\\s*<!-- Sidebar -->\\\\s*<aside.*?</aside>',",
-    "    re.S,",
-    ")",
-    "",
+    "sidebar_pattern = re.compile(r'<div className=\"grid min-h-\\[calc\\(100vh-10rem\\)\\] lg:grid-cols-\\[150px_minmax\\(0,1fr\\)\\]\">.*?<\\/aside>', re.S)",
     "sidebar_replacement = \"\\n\".join([",
     "    '        <div id=\"live-top\" className=\"grid min-h-[calc(100vh-10rem)] lg:grid-cols-[150px_minmax(0,1fr)]\">',",
     "    '          {/* Sidebar */}',",
@@ -43,12 +41,12 @@ lines = [
     "    '            </button>',",
     "    '          </aside>',",
     "])" ,
-    "",
     "source = sidebar_pattern.sub(sidebar_replacement, source, count=1)",
     "if 'id=\"live-top\"' not in source:",
-    "    raise RuntimeError(\"Sidebar repair failed\")",
+    "    raise RuntimeError(\"Sidebar replacement did not match page source\")",
+    "",
 ]
-new_block = "\n".join(lines) + "\n\n"
+new_block = "\n".join(new_lines)
 text = text[:start] + new_block + text[end:]
 path.write_text(text)
 print("Repaired sidebar patch logic")
