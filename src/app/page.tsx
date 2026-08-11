@@ -2668,7 +2668,9 @@ const [resumingMatchId, setResumingMatchId] =
         {/* Top application bar */}
         <div className="flex h-16 items-center justify-between border-b border-slate-200 bg-[#07182d] px-5 text-white sm:px-7 [color-scheme:dark]">
           <div className="flex items-center gap-3">
-            <div className="flex h-9 w-9 items-center justify-center rounded-full bg-red-500 text-lg">/</div>
+            <button type="button" aria-label="Cricket Scorer" onClick={handleSecretLogoTap} className="flex h-10 w-10 items-center justify-center overflow-hidden rounded-full bg-white shadow-sm">
+              <img src="/logo_nobg.png" alt="Cricket Scorer" className="h-full w-full object-contain" />
+            </button>
             <div className="text-lg font-bold uppercase tracking-tight">Cricket Scorer</div>
           </div>
           <div className="hidden items-center gap-3 text-sm sm:flex">
@@ -2716,53 +2718,31 @@ const [resumingMatchId, setResumingMatchId] =
                 </div>
                 <p className="mt-2 text-sm text-slate-500">Innings {liveInningsNumber} of {inningsPerMatch}</p>
 
-                <div className="my-4 border-y border-slate-200 py-3 [color-scheme:dark]">
-                  <div className="space-y-1.5">
-                    {Array.from({ length: inningsPerMatch }, (_, index) => {
-                      const inningNumber = index + 1;
-                      const history = liveInningsHistory.find(
-                        (item) => item.inningsNumber === inningNumber,
-                      );
-                      const isCurrent = inningNumber === liveInningsNumber;
-                      const battingTeamId = isCurrent
-                        ? liveBattingTeamId
-                        : history?.battingTeamId ?? "";
-                      const bowlingTeamId = battingTeamId === teamAId
-                        ? teamBId
-                        : battingTeamId === teamBId
-                          ? teamAId
-                          : "";
-                      const batting = selectedTournament?.teams.find(
-                        (item) => item.team.id === battingTeamId,
-                      )?.team;
-                      const bowling = selectedTournament?.teams.find(
-                        (item) => item.team.id === bowlingTeamId,
-                      )?.team;
-                      const score = isCurrent
-                        ? `${liveRuns}/${liveWickets}`
-                        : history
-                          ? `${history.totalRuns}/-`
-                          : "—";
-
-                      return (
-                        <div
-                          key={inningNumber}
-                          className={`grid grid-cols-[22px_minmax(0,1fr)_auto_18px_minmax(0,1fr)] items-center gap-1 rounded-md px-2 py-1.5 text-xs ${
-                            isCurrent ? "bg-emerald-50" : ""
-                          }`}
-                        >
-                          <span className="font-black text-slate-500">{inningNumber}</span>
-                          <span className={`truncate font-bold ${isCurrent ? "text-blue-700" : "text-slate-700"}`}>
-                            {batting?.shortName ?? batting?.name ?? "—"}
-                          </span>
-                          <span className="font-black text-slate-900">{score}</span>
-                          <span className="text-center font-black text-slate-400">VS</span>
-                          <span className="truncate text-right font-bold text-emerald-700">
-                            {bowling?.shortName ?? bowling?.name ?? "—"}
-                          </span>
-                        </div>
-                      );
-                    })}
+                <div className="my-4 overflow-hidden rounded-lg border-y border-slate-200 py-3 [color-scheme:dark]">
+                  <div className="flex items-center justify-between gap-3 px-1 text-sm">
+                    <span className="shrink-0 font-black text-blue-700">{selectedTournament?.teams.find((item) => item.team.id === teamAId)?.team.shortName ?? "T1"}</span>
+                    <div className="flex min-w-0 flex-1 items-center justify-center gap-2 overflow-hidden text-xs font-black">
+                      {(() => {
+                        const a1 = liveInningsHistory.find((item) => item.inningsNumber === 1);
+                        const a2 = liveInningsHistory.find((item) => item.inningsNumber === 3);
+                        const b1 = liveInningsHistory.find((item) => item.inningsNumber === 2);
+                        const b2 = liveInningsHistory.find((item) => item.inningsNumber === 4);
+                        const score = (history: { battingTeamId: string; totalRuns: number } | undefined, teamId: string, inningNumber: number) => {
+                          if (liveInningsNumber === inningNumber && liveBattingTeamId === teamId) return `${liveRuns}/${liveWickets}`;
+                          return history?.battingTeamId === teamId ? `${history.totalRuns}/-` : "—";
+                        };
+                        return (
+                          <>
+                            <span className="whitespace-nowrap text-slate-900">{score(a1, teamAId, 1)}</span>
+                            {inningsPerMatch === 4 && <span className="whitespace-nowrap text-slate-500">{score(a2, teamAId, 3)}</span>}
+                            <span className="mx-1 text-slate-400">VS</span>
+                            <span className="whitespace-nowrap text-slate-900">{score(b1, teamBId, 2)}</span>
+                            {inningsPerMatch === 4 && <span className="whitespace-nowrap text-slate-500">{score(b2, teamBId, 4)}</span>}
+                          </>
+                        );
+                      })()}
+                    </div>
+                    <span className="shrink-0 font-black text-emerald-700">{selectedTournament?.teams.find((item) => item.team.id === teamBId)?.team.shortName ?? "T2"}</span>
                   </div>
                 </div>
 
