@@ -24,7 +24,9 @@ export async function GET(request: Request) {
     };
 
     const matches = await prisma.match.findMany({
-      where: status ? { ...whereBase, status: status as "LIVE" | "COMPLETED" | "SCHEDULED" | "ABANDONED" | "CANCELLED" } : whereBase,
+      where: status
+        ? { ...whereBase, status: status as "LIVE" | "COMPLETED" | "SCHEDULED" | "ABANDONED" | "CANCELLED" }
+        : whereBase,
       include,
       orderBy: status === "SCHEDULED" ? { scheduledAt: "asc" } : { updatedAt: "desc" },
     });
@@ -39,8 +41,6 @@ export async function GET(request: Request) {
 export async function POST(request: Request) {
   try {
     const body = await request.json();
-    const stage = body.stage === "KNOCKOUT" ? "KNOCKOUT" : "LEAGUE";
-
     const match = await createMatch({
       teamAId: body.teamAId,
       teamBId: body.teamBId,
@@ -55,10 +55,16 @@ export async function POST(request: Request) {
       bowlingMode: body.bowlingMode === "DOUBLE" ? "DOUBLE" : "NORMAL",
       tossWinnerId: typeof body.tossWinnerId === "string" ? body.tossWinnerId : undefined,
       tossDecision: body.tossDecision === "BOWL" ? "BOWL" : body.tossDecision === "BAT" ? "BAT" : undefined,
-      stage,
     });
 
-    return NextResponse.json(match, { status: 201 });
+    const stage = body.stage === "KNOCKOUT" ? "KNOCKOUT" : "LEAGUE";
+    const stagedMatch = await prisma.match.update({
+      where: { id: match.id },
+      data: { stage },
+      include: { teamA: true, teamB: true, players: { include: { player: true, team: true } } },
+    });
+
+    return NextResponse.json(stagedMatch, { status: 201 });
   } catch (error) {
     console.error("POST /api/matches error:", error);
     return NextResponse.json({ error: error instanceof Error ? error.message : "Failed to create match." }, { status: 400 });
