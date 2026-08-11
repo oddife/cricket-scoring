@@ -16,21 +16,31 @@ end = s.index('  async function recordLiveDelivery(', start)
 new_logic = '''  function openWicketPanel(\n    extraType: "WIDE" | "NO_BALL" | "BYE" | "LEG_BYE" | null = null,\n    runsExtra = 0,\n  ) {\n    setPendingWicketExtraType(extraType);\n    setPendingWicketExtraRuns(runsExtra);\n    setDismissedPlayerId(liveStrikerId);\n    setRunOutDismissedEnd("STRIKER");\n    setReplacementPlayerId("");\n    setWicketType(extraType ? "RUN_OUT" : "BOWLED");\n    setShowWicketPanel(true);\n  }\n\n  function openCustomDeliveryPanel() {\n    setCustomDeliveryType("BAT");\n    setCustomDeliveryRuns("5");\n    setCustomDeliveryWicket(false);\n    setShowCustomDeliveryPanel(true);\n  }\n\n  function openExtraDeliveryPanel(\n    type: "WIDE" | "NO_BALL" | "BYE" | "LEG_BYE",\n  ) {\n    setCustomDeliveryType(type);\n    setCustomDeliveryRuns(\n      type === "WIDE" || type === "NO_BALL" ? "0" : "1",\n    );\n    setCustomDeliveryWicket(false);\n    setShowCustomDeliveryPanel(true);\n  }\n\n  async function submitCustomDelivery(includeWicket = customDeliveryWicket) {\n    const parsedRuns = Number(customDeliveryRuns);\n\n    if (!Number.isInteger(parsedRuns) || parsedRuns < 0 || parsedRuns > 99) {\n      setError("Runs must be a whole number from 0 to 99.");\n      return;\n    }\n\n    let totalExtraRuns = parsedRuns;\n\n    if (customDeliveryType === "WIDE" || customDeliveryType === "NO_BALL") {\n      if (parsedRuns > 98) {\n        setError("Additional runs must be between 0 and 98.");\n        return;\n      }\n      totalExtraRuns = parsedRuns + 1;\n    } else if (customDeliveryType === "BYE" || customDeliveryType === "LEG_BYE") {\n      if (parsedRuns < 1) {\n        setError("Bye and leg-bye runs must be at least 1.");\n        return;\n      }\n    }\n\n    setShowCustomDeliveryPanel(false);\n\n    if (includeWicket && customDeliveryType !== "BAT") {\n      openWicketPanel(customDeliveryType, totalExtraRuns);\n      return;\n    }\n\n    if (customDeliveryType === "BAT") {\n      await recordLiveDelivery({ runsBat: parsedRuns });\n      return;\n    }\n\n    await recordLiveDelivery({\n      runsExtra: totalExtraRuns,\n      extraType: customDeliveryType,\n    });\n  }\n\n'''
 s = s[:start] + new_logic + s[end:]
 
-# Make the four extra buttons open the compact dialog rather than record immediately.
+# Replace the four extra buttons as whole JSX lines. This avoids corrupting nested callback parentheses.
 lines = s.splitlines()
 out = []
+extra_replacements = {
+    'recordButton("WIDE"': '{recordButton("WIDE", "bg-violet-600 text-white hover:bg-violet-700", () => openExtraDeliveryPanel("WIDE"))}',
+    'recordButton("NO BALL"': '{recordButton("NO BALL", "bg-violet-600 text-white hover:bg-violet-700", () => openExtraDeliveryPanel("NO_BALL"))}',
+    'recordButton("BYE"': '{recordButton("BYE", "bg-orange-600 text-white hover:bg-orange-700", () => openExtraDeliveryPanel("BYE"))}',
+    'recordButton("LEG BYE"': '{recordButton("LEG BYE", "bg-orange-600 text-white hover:bg-orange-700", () => openExtraDeliveryPanel("LEG_BYE"))}',
+}
 for line in lines:
     stripped = line.strip()
-    if 'recordButton("WIDE"' in stripped:
-        line = re.sub(r'\(\)\s*=>\s*[^)]*', '() => openExtraDeliveryPanel("WIDE")', line)
-    elif 'recordButton("NO BALL"' in stripped:
-        line = re.sub(r'\(\)\s*=>\s*[^)]*', '() => openExtraDeliveryPanel("NO_BALL")', line)
-    elif 'recordButton("BYE"' in stripped and '+ WICKET' not in stripped:
-        line = re.sub(r'\(\)\s*=>\s*[^)]*', '() => openExtraDeliveryPanel("BYE")', line)
-    elif 'recordButton("LEG BYE"' in stripped and '+ WICKET' not in stripped:
-        line = re.sub(r'\(\)\s*=>\s*[^)]*', '() => openExtraDeliveryPanel("LEG_BYE")', line)
-    if any(f'recordButton("{label}"' in stripped for label in ["WIDE + WICKET", "NO BALL + WICKET", "BYE + WICKET", "LEG BYE + WICKET"]):
+    removed = False
+    if any(label in stripped for label in [
+        'recordButton("WIDE + WICKET"',
+        'recordButton("NO BALL + WICKET"',
+        'recordButton("BYE + WICKET"',
+        'recordButton("LEG BYE + WICKET"',
+    ]):
         continue
+    for marker, replacement in extra_replacements.items():
+        if marker in stripped:
+            indent = line[: len(line) - len(line.lstrip())]
+            line = indent + replacement
+            removed = True
+            break
     out.append(line)
 s = '\n'.join(out) + ('\n' if s.endswith('\n') else '')
 
