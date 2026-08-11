@@ -24,3 +24,57 @@ body {
   color: var(--foreground);
   font-family: Arial, Helvetica, sans-serif;
 }
+
+
+@media print {
+  @page {
+    size: A4;
+    margin: 10mm;
+  }
+
+  body * {
+    visibility: hidden !important;
+  }
+
+  .scorecard-print-root,
+  .scorecard-print-root * {
+    visibility: visible !important;
+  }
+
+  .scorecard-print-root {
+    position: absolute !important;
+    inset: 0 !important;
+    width: 100% !important;
+    min-height: 0 !important;
+    overflow: visible !important;
+    padding: 0 !important;
+    background: #ffffff !important;
+    color: #111827 !important;
+  }
+
+  .scorecard-print-root > div {
+    max-width: none !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    border: 0 !important;
+    background: #ffffff !important;
+    box-shadow: none !important;
+  }
+
+  .scorecard-print-root .scorecard-no-print {
+    display: none !important;
+  }
+
+  .scorecard-print-root [class*="bg-slate-"] {
+    background: #ffffff !important;
+  }
+
+  .scorecard-print-root [class*="text-white"],
+  .scorecard-print-root [class*="text-slate-"] {
+    color: #111827 !important;
+  }
+
+  .scorecard-print-root [class*="border-slate-"] {
+    border-color: #d1d5db !important;
+  }
+}

@@ -999,6 +999,20 @@ const [resumingMatchId, setResumingMatchId] =
     }
   }
 
+  function exportScorecardPdf() {
+    if (!scorecardMatch) return;
+
+    const previousTitle = document.title;
+    document.title = `${scorecardMatch.teamA.name} vs ${scorecardMatch.teamB.name} - Scorecard`;
+
+    window.setTimeout(() => {
+      window.print();
+      window.setTimeout(() => {
+        document.title = previousTitle;
+      }, 500);
+    }, 50);
+  }
+
   async function resumeMatch(matchId: string) {
     try {
       setResumingMatchId(matchId);
@@ -2700,23 +2714,55 @@ const [resumingMatchId, setResumingMatchId] =
                 <div className="mt-2 rounded-lg bg-slate-100 px-3 py-2 font-semibold">
                   {selectedTournament?.name ?? "Tournament"}
                 </div>
-                <p className="mt-2 text-sm text-slate-500">Innings {1} of {inningsPerMatch}</p>
+                <p className="mt-2 text-sm text-slate-500">Innings {liveInningsNumber} of {inningsPerMatch}</p>
 
-                <div className="my-5 border-y border-slate-200 py-5 [color-scheme:dark]">
-                  <div className="flex items-center gap-3">
-                    <div className="h-10 w-10 rounded-full bg-blue-100" />
-                    <div>
-                      <p className="font-bold text-blue-700">{battingTeam?.team.shortName ?? battingTeam?.team.name ?? "Team A"}</p>
-                      <p className="text-xs font-semibold text-blue-600">Batting</p>
-                    </div>
-                  </div>
-                  <div className="py-3 text-center text-xs font-bold text-slate-400">VS</div>
-                  <div className="flex items-center gap-3">
-                    <div className="h-10 w-10 rounded-full bg-emerald-100" />
-                    <div>
-                      <p className="font-bold text-emerald-700">{bowlingTeam?.team.shortName ?? bowlingTeam?.team.name ?? "Team B"}</p>
-                      <p className="text-xs font-semibold text-emerald-600">Bowling</p>
-                    </div>
+                <div className="my-4 border-y border-slate-200 py-3 [color-scheme:dark]">
+                  <div className="space-y-1.5">
+                    {Array.from({ length: inningsPerMatch }, (_, index) => {
+                      const inningNumber = index + 1;
+                      const history = liveInningsHistory.find(
+                        (item) => item.inningsNumber === inningNumber,
+                      );
+                      const isCurrent = inningNumber === liveInningsNumber;
+                      const battingTeamId = isCurrent
+                        ? liveBattingTeamId
+                        : history?.battingTeamId ?? "";
+                      const bowlingTeamId = battingTeamId === teamAId
+                        ? teamBId
+                        : battingTeamId === teamBId
+                          ? teamAId
+                          : "";
+                      const batting = selectedTournament?.teams.find(
+                        (item) => item.team.id === battingTeamId,
+                      )?.team;
+                      const bowling = selectedTournament?.teams.find(
+                        (item) => item.team.id === bowlingTeamId,
+                      )?.team;
+                      const score = isCurrent
+                        ? `${liveRuns}/${liveWickets}`
+                        : history
+                          ? `${history.totalRuns}/-`
+                          : "—";
+
+                      return (
+                        <div
+                          key={inningNumber}
+                          className={`grid grid-cols-[22px_minmax(0,1fr)_auto_18px_minmax(0,1fr)] items-center gap-1 rounded-md px-2 py-1.5 text-xs ${
+                            isCurrent ? "bg-emerald-50" : ""
+                          }`}
+                        >
+                          <span className="font-black text-slate-500">{inningNumber}</span>
+                          <span className={`truncate font-bold ${isCurrent ? "text-blue-700" : "text-slate-700"}`}>
+                            {batting?.shortName ?? batting?.name ?? "—"}
+                          </span>
+                          <span className="font-black text-slate-900">{score}</span>
+                          <span className="text-center font-black text-slate-400">VS</span>
+                          <span className="truncate text-right font-bold text-emerald-700">
+                            {bowling?.shortName ?? bowling?.name ?? "—"}
+                          </span>
+                        </div>
+                      );
+                    })}
                   </div>
                 </div>
 
@@ -5601,14 +5647,14 @@ r-emerald-500 [color-scheme:dark]"
       </div>
 
       {scorecardMatch && (
-        <div className="fixed inset-0 z-[80] overflow-y-auto bg-black/70 p-3 backdrop-blur-sm sm:p-6">
+        <div className="scorecard-print-root fixed inset-0 z-[80] overflow-y-auto bg-black/70 p-3 backdrop-blur-sm sm:p-6">
           <div className="mx-auto my-4 w-full max-w-6xl rounded-3xl border border-slate-700 bg-slate-950 p-4 shadow-2xl sm:my-8 sm:p-6 [color-scheme:dark]">
             {(() => {
               const match = scorecardMatch;
               const teamName = (id: string) => id === match.teamA.id ? match.teamA.name : match.teamB.name;
               const playerName = (id: string) => match.players.find((item) => item.playerId === id)?.player.name ?? "Player";
               return <>
-                <div className="flex flex-col justify-between gap-4 border-b border-slate-800 pb-5 sm:flex-row sm:items-start"><div><p className="text-xs font-bold uppercase tracking-widest text-emerald-400">Match Scorecard</p><h2 className="mt-1 text-2xl font-black">{match.teamA.name} <span className="text-slate-600">vs</span> {match.teamB.name}</h2><p className="mt-2 text-sm text-slate-500">{match.oversPerInnings} overs · {match.inningsPerMatch} innings</p></div><button type="button" onClick={() => setScorecardMatch(null)} className="h-10 rounded-xl border border-slate-700 px-4 font-semibold text-slate-300">Close</button></div>
+                <div className="flex flex-col justify-between gap-4 border-b border-slate-800 pb-5 sm:flex-row sm:items-start"><div><p className="text-xs font-bold uppercase tracking-widest text-emerald-400">Match Scorecard</p><h2 className="mt-1 text-2xl font-black">{match.teamA.name} <span className="text-slate-600">vs</span> {match.teamB.name}</h2><p className="mt-2 text-sm text-slate-500">{match.oversPerInnings} overs · {match.inningsPerMatch} innings</p></div><div className="scorecard-no-print flex shrink-0 gap-2"><button type="button" onClick={exportScorecardPdf} className="h-10 rounded-xl bg-emerald-500 px-4 font-semibold text-slate-950 transition hover:bg-emerald-400">Export PDF</button><button type="button" onClick={() => setScorecardMatch(null)} className="h-10 rounded-xl border border-slate-700 px-4 font-semibold text-slate-300">Close</button></div></div>
                 <div className="mt-5 grid gap-3 sm:grid-cols-2">{match.innings.map((i) => <div key={i.id} className="rounded-2xl border border-slate-800 bg-slate-900 p-4"><div className="flex items-center justify-between"><div><p className="text-xs uppercase text-slate-500">Innings {i.inningsNumber}</p><p className="mt-1 font-bold">{teamName(i.battingTeamId)}</p></div><div className="text-right"><p className="text-3xl font-black">{i.totalRuns}/{i.wickets}</p><p className="text-xs text-slate-500">{Math.floor(i.legalBalls/6)}.{i.legalBalls%6} overs</p></div></div></div>)}</div>
                 <div className="mt-6 space-y-6">{match.innings.map((i) => { const bat=new Map<string,{r:number;b:number;f:number;s:number;out:boolean;d:string}>(); const bowl=new Map<string,{b:number;r:number;w:number}>(); const fall:Array<{p:string;score:number;over:string}>=[]; let score=0; for(const x of i.deliveries){const a=bat.get(x.strikerId)||{r:0,b:0,f:0,s:0,out:false,d:""};a.r+=x.runsBat;if(x.isLegal)a.b++;if(x.runsBat===4)a.f++;if(x.runsBat===6)a.s++;if(x.isWicket&&x.wicket?.dismissedPlayerId===x.strikerId){a.out=true;a.d=x.wicket.type.replaceAll("_"," ");fall.push({p:playerName(x.strikerId),score:score+x.runsTotal,over:`${x.overNumber}.${x.ballNumber}`})}bat.set(x.strikerId,a);const q=bowl.get(x.bowlerId)||{b:0,r:0,w:0};if(x.isLegal)q.b++;q.r+=x.runsTotal;if(x.isWicket&&x.wicket?.bowlerId===x.bowlerId)q.w++;bowl.set(x.bowlerId,q);score+=x.runsTotal;} return <section key={i.id} className="rounded-2xl border border-slate-800 bg-slate-900 p-4 sm:p-5"><div className="flex justify-between border-b border-slate-800 pb-4"><h3 className="text-xl font-black">{teamName(i.battingTeamId)}</h3><b className="text-2xl">{i.totalRuns}/{i.wickets}</b></div><div className="mt-5 grid gap-6 lg:grid-cols-2"><div><div className="mb-2 grid grid-cols-[1fr_45px_45px_40px_40px_55px] text-[11px] font-bold uppercase text-slate-500"><span>Batter</span><span>R</span><span>B</span><span>4s</span><span>6s</span><span>SR</span></div>{Array.from(bat).map(([id,v])=><div key={id} className="grid grid-cols-[1fr_45px_45px_40px_40px_55px] items-center py-2 text-sm"><div><b>{playerName(id)}{!v.out?" *":""}</b><p className="text-[10px] uppercase text-slate-500">{v.out?v.d:"not out"}</p></div><b>{v.r}</b><span>{v.b}</span><span>{v.f}</span><span>{v.s}</span><span>{v.b?(v.r/v.b*100).toFixed(2):"0.00"}</span></div>)}</div><div><div className="mb-2 grid grid-cols-[1fr_45px_45px_45px_55px] text-[11px] font-bold uppercase text-slate-500"><span>Bowler</span><span>O</span><span>R</span><span>W</span><span>ECON</span></div>{Array.from(bowl).map(([id,v])=><div key={id} className="grid grid-cols-[1fr_45px_45px_45px_55px] items-center py-2 text-sm"><b>{playerName(id)}</b><span>{Math.floor(v.b/6)}.{v.b%6}</span><span>{v.r}</span><span>{v.w}</span><span>{v.b?(v.r/v.b*6).toFixed(2):"0.00"}</span></div>)}</div></div>{fall.length>0&&<div className="mt-4 border-t border-slate-800 pt-4"><p className="text-xs font-bold uppercase text-slate-500">Fall of Wickets</p><div className="mt-2 flex flex-wrap gap-2">{fall.map((f,n)=><span key={n} className="rounded-lg bg-slate-800 px-3 py-2 text-xs"><b>{n+1}-{f.score}</b> {f.p} ({f.over})</span>)}</div></div>}<div className="mt-4 border-t border-slate-800 pt-4"><p className="text-xs font-bold uppercase text-slate-500">Ball by Ball</p><div className="mt-3 flex flex-wrap gap-2">{i.deliveries.map((d)=><span key={d.id} title={`${playerName(d.bowlerId)} to ${playerName(d.strikerId)}`} className={`rounded-full px-3 py-2 text-xs font-bold ${d.isWicket?"bg-red-500 text-white":d.runsTotal===4||d.runsTotal===6?"bg-blue-500 text-white":"bg-slate-800 text-slate-300"}`}>{d.isWicket?"W":d.extraType?`${d.runsTotal} ${d.extraType.replaceAll("_"," ")}`:d.runsBat}</span>)}</div></div></section>})}</div>
               </>;
