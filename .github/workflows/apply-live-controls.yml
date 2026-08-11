@@ -1,0 +1,134 @@
+name: Apply live scoring correction controls
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+
+permissions:
+  contents: write
+
+jobs:
+  apply:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Apply live controls
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+
+          schema = Path('prisma/schema.prisma')
+          s = schema.read_text()
+          marker = '  previousOverBowlerBId String?\n\n  match Match'
+          if 'undoState String?' not in s:
+              s = s.replace(marker, '  previousOverBowlerBId String?\n\n  // JSON snapshot of the previous scoring/manual action for one-step undo.\n  undoState String?\n\n  match Match')
+          schema.write_text(s)
+
+          scoring = Path('src/lib/scoring.ts')
+          s = scoring.read_text()
+
+          old_restriction = '''  if (innings.match.bowlingMode !== "DOUBLE") {\n    throw new Error(\n      "Manual over-end batsman swap is only available in Double Bowler mode.",\n    );\n  }\n\n  if (\n    innings.legalBalls === 0 ||\n    innings.legalBalls % 6 !== 0\n  ) {\n    throw new Error(\n      "Batsmen can only be manually swapped after a completed over.",\n    );\n  }\n\n'''
+          if old_restriction in s:
+              s = s.replace(old_restriction, '')
+
+          # Add the undo snapshot to delivery updates.
+          snapshot_marker = '''  const transactionResult =\n    await prisma.$transaction(\n      async (tx) => {'''
+          snapshot_insert = '''  const undoSnapshot = JSON.stringify({\n    action: "DELIVERY",\n    deliveryId: "__PENDING__",\n    totalRuns: innings.totalRuns,\n    wickets: innings.wickets,\n    legalBalls: innings.legalBalls,\n    currentStrikerId: innings.currentStrikerId,\n    currentNonStrikerId: innings.currentNonStrikerId,\n    currentBowlerAId: innings.currentBowlerAId,\n    currentBowlerBId: innings.currentBowlerBId,\n    previousOverBowlerAId: innings.previousOverBowlerAId,\n    previousOverBowlerBId: innings.previousOverBowlerBId,\n    status: innings.status,\n    completedAt: innings.completedAt ? innings.completedAt.toISOString() : null,\n  });\n\n'''
+          if 'const undoSnapshot = JSON.stringify({\n    action: "DELIVERY"' not in s:
+              s = s.replace(snapshot_marker, snapshot_insert + snapshot_marker)
+
+          # Store snapshot in both innings update branches.
+          first = '''                completedAt:\n                  inningsComplete\n                    ? new Date()\n                    : null,\n'''
+          first_new = '''                completedAt:\n                  inningsComplete\n                    ? new Date()\n                    : null,\n\n                undoState:\n                  undoSnapshot.replace("__PENDING__", created.id),\n'''
+          if first in s and 'undoSnapshot.replace("__PENDING__", created.id)' not in s:
+              s = s.replace(first, first_new, 1)
+
+          second = '''              completedAt:\n                inningsComplete\n                  ? new Date()\n                  : null,\n'''
+          second_new = '''              completedAt:\n                inningsComplete\n                  ? new Date()\n                  : null,\n\n              undoState:\n                undoSnapshot.replace("__PENDING__", created.id),\n'''
+          s = s.replace(second, second_new, 1)
+
+          # Expand swap select so it can persist an undo snapshot.
+          old_select = '''      currentStrikerId: true,\n      currentNonStrikerId: true,\n      match: {'''
+          new_select = '''      currentStrikerId: true,\n      currentNonStrikerId: true,\n      totalRuns: true,\n      wickets: true,\n      currentBowlerAId: true,\n      currentBowlerBId: true,\n      previousOverBowlerAId: true,\n      previousOverBowlerBId: true,\n      completedAt: true,\n      match: {'''
+          s = s.replace(old_select, new_select, 1)
+
+          old_update = '''  const updated = await prisma.innings.update({\n    where: { id: innings.id },\n    data: {\n      currentStrikerId:\n        innings.currentNonStrikerId,\n      currentNonStrikerId:\n        innings.currentStrikerId,\n    },'''
+          new_update = '''  const undoState = JSON.stringify({\n    action: "MANUAL",\n    totalRuns: innings.totalRuns,\n    wickets: innings.wickets,\n    legalBalls: innings.legalBalls,\n    currentStrikerId: innings.currentStrikerId,\n    currentNonStrikerId: innings.currentNonStrikerId,\n    currentBowlerAId: innings.currentBowlerAId,\n    currentBowlerBId: innings.currentBowlerBId,\n    previousOverBowlerAId: innings.previousOverBowlerAId,\n    previousOverBowlerBId: innings.previousOverBowlerBId,\n    status: innings.status,\n    completedAt: innings.completedAt ? innings.completedAt.toISOString() : null,\n  });\n\n  const updated = await prisma.innings.update({\n    where: { id: innings.id },\n    data: {\n      currentStrikerId:\n        innings.currentNonStrikerId,\n      currentNonStrikerId:\n        innings.currentStrikerId,\n      undoState,\n    },'''
+          if old_update in s:
+              s = s.replace(old_update, new_update)
+
+          # Append manual change and one-step undo functions.
+          if 'export async function manualChangePersistentState' not in s:
+              s += '''\n\nexport type ManualStateChange =\n  | "STRIKER"\n  | "NON_STRIKER"\n  | "BOWLER_A"\n  | "BOWLER_B";\n\nexport async function manualChangePersistentState(\n  inningsId: string,\n  change: ManualStateChange,\n  playerId: string,\n) {\n  if (!inningsId || !playerId) throw new Error("Innings and player are required.");\n\n  const innings = await prisma.innings.findUnique({\n    where: { id: inningsId },\n    select: {\n      id: true, status: true, matchId: true, battingTeamId: true, bowlingTeamId: true,\n      totalRuns: true, wickets: true, legalBalls: true,\n      currentStrikerId: true, currentNonStrikerId: true,\n      currentBowlerAId: true, currentBowlerBId: true,\n      previousOverBowlerAId: true, previousOverBowlerBId: true, completedAt: true,\n    },\n  });\n  if (!innings) throw new Error("Innings not found.");\n  if (innings.status !== "LIVE") throw new Error("Innings is not live.");\n\n  const teamId = change === "STRIKER" || change === "NON_STRIKER"\n    ? innings.battingTeamId\n    : innings.bowlingTeamId;\n\n  const matchPlayer = await prisma.matchPlayer.findFirst({\n    where: { matchId: innings.matchId, teamId, playerId },\n  });\n  if (!matchPlayer) throw new Error("Selected player is not part of this match team.");\n\n  if ((change === "STRIKER" && playerId === innings.currentNonStrikerId) ||\n      (change === "NON_STRIKER" && playerId === innings.currentStrikerId)) {\n    throw new Error("The selected player is already the other batsman.");\n  }\n\n  const undoState = JSON.stringify({\n    action: "MANUAL", totalRuns: innings.totalRuns, wickets: innings.wickets, legalBalls: innings.legalBalls,\n    currentStrikerId: innings.currentStrikerId, currentNonStrikerId: innings.currentNonStrikerId,\n    currentBowlerAId: innings.currentBowlerAId, currentBowlerBId: innings.currentBowlerBId,\n    previousOverBowlerAId: innings.previousOverBowlerAId, previousOverBowlerBId: innings.previousOverBowlerBId,\n    status: innings.status, completedAt: innings.completedAt ? innings.completedAt.toISOString() : null,\n  });\n\n  const data: Record<string, string | null> = { undoState };\n  if (change === "STRIKER") data.currentStrikerId = playerId;\n  if (change === "NON_STRIKER") data.currentNonStrikerId = playerId;\n  if (change === "BOWLER_A") data.currentBowlerAId = playerId;\n  if (change === "BOWLER_B") data.currentBowlerBId = playerId;\n\n  const updated = await prisma.innings.update({\n    where: { id: innings.id }, data,\n    select: { currentStrikerId: true, currentNonStrikerId: true, currentBowlerAId: true, currentBowlerBId: true },\n  });\n\n  return updated;\n}\n\nexport async function undoPersistentAction(inningsId: string) {\n  if (!inningsId) throw new Error("Innings ID is required.");\n\n  const innings = await prisma.innings.findUnique({\n    where: { id: inningsId },\n    select: { id: true, matchId: true, status: true, undoState: true },\n  });\n  if (!innings) throw new Error("Innings not found.");\n  if (!innings.undoState) throw new Error("There is no action to undo.");\n\n  let snapshot: any;\n  try { snapshot = JSON.parse(innings.undoState); } catch { throw new Error("Undo history is invalid."); }\n\n  await prisma.$transaction(async (tx) => {\n    if (snapshot.action === "DELIVERY" && snapshot.deliveryId) {\n      await tx.delivery.delete({ where: { id: snapshot.deliveryId } });\n    }\n\n    await tx.innings.update({\n      where: { id: innings.id },\n      data: {\n        totalRuns: snapshot.totalRuns, wickets: snapshot.wickets, legalBalls: snapshot.legalBalls,\n        currentStrikerId: snapshot.currentStrikerId ?? null, currentNonStrikerId: snapshot.currentNonStrikerId ?? null,\n        currentBowlerAId: snapshot.currentBowlerAId ?? null, currentBowlerBId: snapshot.currentBowlerBId ?? null,\n        previousOverBowlerAId: snapshot.previousOverBowlerAId ?? null, previousOverBowlerBId: snapshot.previousOverBowlerBId ?? null,\n        status: snapshot.status ?? "LIVE", completedAt: snapshot.completedAt ? new Date(snapshot.completedAt) : null,\n        undoState: null,\n      },\n    });\n\n    if (snapshot.action === "DELIVERY") {\n      await tx.match.update({ where: { id: innings.matchId }, data: { status: "LIVE" } });\n    }\n  });\n\n  return { ok: true, action: snapshot.action };\n}\n'''
+
+          scoring.write_text(s)
+
+          # API route for manual state changes.
+          route = Path('src/app/api/innings/[inningsId]/manual-state/route.ts')
+          route.parent.mkdir(parents=True, exist_ok=True)
+          route.write_text('''import { NextResponse } from "next/server";\nimport { manualChangePersistentState } from "@/lib/scoring";\n\ntype RouteContext = { params: Promise<{ inningsId: string }> };\n\nexport async function POST(request: Request, { params }: RouteContext) {\n  try {\n    const { inningsId } = await params;\n    const body = await request.json();\n    const change = body.change;\n    const playerId = typeof body.playerId === "string" ? body.playerId.trim() : "";\n    if (!["STRIKER", "NON_STRIKER", "BOWLER_A", "BOWLER_B"].includes(change)) {\n      return NextResponse.json({ error: "Invalid manual change." }, { status: 400 });\n    }\n    return NextResponse.json(await manualChangePersistentState(inningsId, change, playerId));\n  } catch (error) {\n    const message = error instanceof Error ? error.message : "Failed to change player.";\n    return NextResponse.json({ error: message }, { status: 400 });\n  }\n}\n''')
+
+          undo_route = Path('src/app/api/innings/[inningsId]/undo/route.ts')
+          undo_route.parent.mkdir(parents=True, exist_ok=True)
+          undo_route.write_text('''import { NextResponse } from "next/server";\nimport { undoPersistentAction } from "@/lib/scoring";\n\ntype RouteContext = { params: Promise<{ inningsId: string }> };\n\nexport async function POST(_request: Request, { params }: RouteContext) {\n  try {\n    const { inningsId } = await params;\n    return NextResponse.json(await undoPersistentAction(inningsId));\n  } catch (error) {\n    const message = error instanceof Error ? error.message : "Failed to undo action.";\n    return NextResponse.json({ error: message }, { status: 400 });\n  }\n}\n''')
+
+          # Page state.
+          page = Path('src/app/page.tsx')
+          p = page.read_text()
+          p = p.replace('  const [showWicketPanel, setShowWicketPanel] =\n    useState(false);', '  const [showWicketPanel, setShowWicketPanel] =\n    useState(false);\n  const [manualActionMenu, setManualActionMenu] = useState<"BATSMAN" | "BOWLER" | null>(null);\n  const [manualStrikerId, setManualStrikerId] = useState("");\n  const [manualNonStrikerId, setManualNonStrikerId] = useState("");\n  const [manualBowlerAId, setManualBowlerAId] = useState("");\n  const [manualBowlerBId, setManualBowlerBId] = useState("");\n  const [liveUndoAvailable, setLiveUndoAvailable] = useState(false);', 1)
+
+          # Add refresh state from persisted innings.
+          needle = '      setLiveInningsComplete(innings.status === "COMPLETED");'
+          p = p.replace(needle, needle + '\n      setLiveUndoAvailable(Boolean(innings.undoState));', 1)
+
+          # Add control functions before manuallySwapStrikers.
+          marker = '  async function manuallySwapStrikers() {'
+          funcs = '''  async function performUndo() {\n    if (!liveInningsId || !liveUndoAvailable) return;\n    if (!window.confirm("Undo the last action? The previous scoring/player state will be restored.")) return;\n    try {\n      setLiveLoading(true); setError("");\n      const response = await fetch(`/api/innings/${liveInningsId}/undo`, { method: "POST" });\n      const data = await response.json();\n      if (!response.ok) throw new Error(data?.error || "Failed to undo action.");\n      setLiveUndoAvailable(false);\n      await refreshLiveInnings(liveInningsId);\n    } catch (err) { setError(err instanceof Error ? err.message : "Failed to undo action."); }\n    finally { setLiveLoading(false); }\n  }\n\n  async function changeLivePlayer(change: "STRIKER" | "NON_STRIKER" | "BOWLER_A" | "BOWLER_B", playerId: string) {\n    if (!liveInningsId || !playerId) return;\n    const isDismissed = dismissedIdsForCurrentInnings().has(playerId);\n    if ((change === "STRIKER" || change === "NON_STRIKER") && isDismissed) {\n      if (!window.confirm("This player was previously dismissed in this innings. Bring them back as a correction?")) return;\n    }\n    const label = change === "STRIKER" ? "striker" : change === "NON_STRIKER" ? "non-striker" : change === "BOWLER_A" ? "Bowler A" : "Bowler B";\n    if (!window.confirm(`Change ${label} to this player? This applies from the next delivery and does not change previous deliveries.`)) return;\n    try {\n      setLiveLoading(true); setError("");\n      const response = await fetch(`/api/innings/${liveInningsId}/manual-state`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ change, playerId }) });\n      const data = await response.json();\n      if (!response.ok) throw new Error(data?.error || "Failed to change player.");\n      setManualActionMenu(null); setLiveUndoAvailable(true);\n      await refreshLiveInnings(liveInningsId);\n    } catch (err) { setError(err instanceof Error ? err.message : "Failed to change player."); }\n    finally { setLiveLoading(false); }\n  }\n\n  function dismissedIdsForCurrentInnings() {\n    return new Set(liveDeliveries.filter((delivery) => delivery.wicket).map((delivery) => delivery.wicket!.dismissedPlayerId));\n  }\n\n'''
+          if 'async function performUndo()' not in p:
+              p = p.replace(marker, funcs + marker, 1)
+
+          # Mark undo available after every recorded delivery.
+          p = p.replace('      await refreshLiveInnings(liveInningsId);\n\n      setShowWicketPanel(false);', '      setLiveUndoAvailable(true);\n      await refreshLiveInnings(liveInningsId);\n\n      setShowWicketPanel(false);', 1)
+
+          # Make swap confirm and allow it any time.
+          old_swap_call = '    try {\n      setLiveLoading(true);\n      setError("");\n\n      const response = await fetch(\n        `/api/innings/${liveInningsId}/swap-strikers`,'
+          new_swap_call = '    if (!window.confirm(`Swap batsmen?\\n\\nStriker: ${liveStriker?.name ?? "Striker"} ↔ Non-striker: ${liveNonStriker?.name ?? "Non-striker"}`)) return;\n\n    try {\n      setLiveLoading(true);\n      setError("");\n\n      const response = await fetch(\n        `/api/innings/${liveInningsId}/swap-strikers`,'
+          p = p.replace(old_swap_call, new_swap_call, 1)
+          p = p.replace('      setLiveNeedsManualSwap(false);\n    } catch (err)', '      setLiveNeedsManualSwap(false);\n      setLiveUndoAvailable(true);\n    } catch (err)', 1)
+
+          # Replace the single swap panel with four permanent controls.
+          start = p.find('                <div className={`rounded-xl border p-3 shadow-sm transition-all [color-scheme:dark] ${liveNeedsManualSwap')
+          end = p.find('                {/* Delivery controls */}', start)
+          if start == -1 or end == -1:
+              raise SystemExit('Live batsman control panel not found')
+          controls = '''                <div className={`rounded-xl border p-3 shadow-sm transition-all [color-scheme:dark] ${liveNeedsManualSwap ? "border-amber-300 bg-amber-50 ring-2 ring-amber-200/80" : "border-slate-200 bg-white"}`}>\n                  <div className="flex flex-wrap items-center gap-2">\n                    <button type="button" onClick={() => void performUndo()} disabled={liveLoading || !liveUndoAvailable} className="h-11 rounded-lg border border-slate-300 bg-slate-100 px-4 font-bold text-slate-800 disabled:cursor-not-allowed disabled:opacity-40">↶ Undo</button>\n                    <button type="button" onClick={() => void manuallySwapStrikers()} disabled={liveLoading || liveInningsComplete || !liveStrikerId || !liveNonStrikerId} className={`h-11 rounded-lg px-4 font-bold transition disabled:opacity-40 ${liveNeedsManualSwap ? "bg-amber-500 text-white hover:bg-amber-600 shadow-md" : "border border-slate-300 bg-slate-100 text-slate-800 hover:bg-slate-200"}`}>⇄ Swap Batsmen</button>\n                    <button type="button" onClick={() => { setManualStrikerId(liveStrikerId); setManualNonStrikerId(liveNonStrikerId); setManualActionMenu("BATSMAN"); }} disabled={liveLoading || liveInningsComplete} className="h-11 rounded-lg border border-slate-300 bg-slate-100 px-4 font-bold text-slate-800 disabled:opacity-40">Change Batsman</button>\n                    <button type="button" onClick={() => { setManualBowlerAId(liveBowlerAId || liveBowlerId); setManualBowlerBId(liveBowlerBId); setManualActionMenu("BOWLER"); }} disabled={liveLoading || liveInningsComplete} className="h-11 rounded-lg border border-slate-300 bg-slate-100 px-4 font-bold text-slate-800 disabled:opacity-40">Change Bowler</button>\n                  </div>\n                  {liveNeedsManualSwap && <p className="mt-2 text-xs font-bold text-amber-800">Over complete — check the batsmen and swap ends if required.</p>}\n                </div>\n\n'''
+          p = p[:start] + controls + p[end:]
+
+          # Add the manual change modal before wicket modal.
+          modal_marker = '        {showWicketPanel && ('
+          modal = '''        {manualActionMenu && (\n          <div className="fixed inset-0 z-[65] flex items-center justify-center bg-black/60 p-4 backdrop-blur-sm">\n            <div className="w-full max-w-lg rounded-2xl bg-white p-6 shadow-2xl [color-scheme:dark]">\n              <div className="flex items-center justify-between gap-3">\n                <div><p className="text-xs font-bold uppercase tracking-wide text-blue-600">Manual Correction</p><h3 className="mt-1 text-2xl font-black">{manualActionMenu === "BATSMAN" ? "Change Batsman" : "Change Bowler"}</h3></div>\n                <button type="button" onClick={() => setManualActionMenu(null)} className="h-9 rounded-lg border border-slate-300 px-3 font-semibold">Close</button>\n              </div>\n              {manualActionMenu === "BATSMAN" ? (\n                <div className="mt-5 space-y-4">\n                  <div><label className="mb-2 block text-sm font-semibold">Striker</label><div className="flex gap-2"><select value={manualStrikerId} onChange={(e) => setManualStrikerId(e.target.value)} className="h-11 min-w-0 flex-1 rounded-lg border border-slate-700 bg-slate-950 px-3 text-white [color-scheme:dark]">{liveBattingPlayers.map((p) => <option key={p.id} value={p.id}>{p.name}{dismissedIdsForCurrentInnings().has(p.id) ? " — DISMISSED" : ""}</option>)}</select><button type="button" onClick={() => void changeLivePlayer("STRIKER", manualStrikerId)} className="h-11 rounded-lg bg-blue-600 px-4 font-bold text-white">Apply</button></div></div>\n                  <div><label className="mb-2 block text-sm font-semibold">Non-striker</label><div className="flex gap-2"><select value={manualNonStrikerId} onChange={(e) => setManualNonStrikerId(e.target.value)} className="h-11 min-w-0 flex-1 rounded-lg border border-slate-700 bg-slate-950 px-3 text-white [color-scheme:dark]">{liveBattingPlayers.map((p) => <option key={p.id} value={p.id}>{p.name}{dismissedIdsForCurrentInnings().has(p.id) ? " — DISMISSED" : ""}</option>)}</select><button type="button" onClick={() => void changeLivePlayer("NON_STRIKER", manualNonStrikerId)} className="h-11 rounded-lg bg-blue-600 px-4 font-bold text-white">Apply</button></div></div>\n                  <p className="text-xs text-slate-500">Previous deliveries remain credited to the original players. A dismissed player can be selected for a correction.</p>\n                </div>\n              ) : (\n                <div className="mt-5 space-y-4">\n                  <div><label className="mb-2 block text-sm font-semibold">Bowler A</label><div className="flex gap-2"><select value={manualBowlerAId} onChange={(e) => setManualBowlerAId(e.target.value)} className="h-11 min-w-0 flex-1 rounded-lg border border-slate-700 bg-slate-950 px-3 text-white [color-scheme:dark]">{liveBowlingPlayers.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}</select><button type="button" onClick={() => void changeLivePlayer("BOWLER_A", manualBowlerAId)} className="h-11 rounded-lg bg-blue-600 px-4 font-bold text-white">Apply</button></div></div>\n                  {doubleMode && !oddFinalOver && <div><label className="mb-2 block text-sm font-semibold">Bowler B</label><div className="flex gap-2"><select value={manualBowlerBId} onChange={(e) => setManualBowlerBId(e.target.value)} className="h-11 min-w-0 flex-1 rounded-lg border border-slate-700 bg-slate-950 px-3 text-white [color-scheme:dark]">{liveBowlingPlayers.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}</select><button type="button" onClick={() => void changeLivePlayer("BOWLER_B", manualBowlerBId)} className="h-11 rounded-lg bg-blue-600 px-4 font-bold text-white">Apply</button></div></div>}\n                  <p className="text-xs text-slate-500">In Double Bowler mode either bowling position can be corrected independently. The change applies from the next delivery.</p>\n                </div>\n              )}\n            </div>\n          </div>\n        )}\n\n'''
+          if 'Manual Correction' not in p:
+              p = p.replace(modal_marker, modal + modal_marker, 1)
+
+          page.write_text(p)
+          print('live controls patch prepared')
+          PY
+
+      - name: Verify production build
+        run: |
+          npm ci
+          npx prisma generate
+          npm run build
+
+      - name: Commit and remove workflow
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add prisma/schema.prisma src/lib/scoring.ts src/app/page.tsx src/app/api/innings/[inningsId]/manual-state/route.ts src/app/api/innings/[inningsId]/undo/route.ts
+          git commit -m "feat: add live scoring correction controls"
+          git push origin main
+          git rm -f .github/workflows/apply-live-controls.yml
+          git commit -m "chore: remove live controls workflow"
+          git push origin main
