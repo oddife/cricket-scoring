@@ -1736,7 +1736,12 @@ const [resumingMatchId, setResumingMatchId] =
       setLiveOverRuns([]);
       setLiveInningsComplete(false);
       setLiveInningsNumber(1);
-      setLiveInningsHistory([]);
+      setLiveInningsHistory([{
+        inningsNumber: 1,
+        totalRuns: Number(data.totalRuns ?? 0),
+        battingTeamId: data.battingTeamId ?? inningsOneBattingTeamId,
+        target: data.target ?? null,
+      }]);
       setLiveTab("LIVE");
       setLiveNeedsManualSwap(false);
       setNextOverBowlerAId("");
@@ -1830,8 +1835,14 @@ const [resumingMatchId, setResumingMatchId] =
       }
 
       setLiveInningsHistory((current) => [
-        ...current.filter((item) => item.inningsNumber !== completedInningsSnapshot.inningsNumber),
+        ...current.filter((item) => item.inningsNumber !== completedInningsSnapshot.inningsNumber && item.inningsNumber !== nextNumber),
         completedInningsSnapshot,
+        {
+          inningsNumber: nextNumber,
+          totalRuns: Number(data.totalRuns ?? 0),
+          battingTeamId,
+          target: data.target ?? null,
+        },
       ]);
       setLiveInningsId(data.id);
       setLiveInningsNumber(nextNumber);
