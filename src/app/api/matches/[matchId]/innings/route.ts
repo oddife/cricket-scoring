@@ -1,6 +1,8 @@
 import { NextResponse } from "next/server";
 
 import { startInnings } from "@/lib/match-setup";
+import { prisma } from "@/lib/prisma";
+import { calculateTarget } from "@/scoring/match-rules";
 
 type RouteContext = {
   params: Promise<{
@@ -23,7 +25,6 @@ export async function POST(
     }
 
     const body = await request.json();
-
     const inningsNumber = Number(body.inningsNumber);
 
     if (!Number.isInteger(inningsNumber) || inningsNumber < 1) {
@@ -34,46 +35,18 @@ export async function POST(
     }
 
     const battingTeamId =
-      typeof body.battingTeamId === "string"
-        ? body.battingTeamId.trim()
-        : "";
-
+      typeof body.battingTeamId === "string" ? body.battingTeamId.trim() : "";
     const bowlingTeamId =
-      typeof body.bowlingTeamId === "string"
-        ? body.bowlingTeamId.trim()
-        : "";
-
+      typeof body.bowlingTeamId === "string" ? body.bowlingTeamId.trim() : "";
     const strikerId =
-      typeof body.strikerId === "string"
-        ? body.strikerId.trim()
-        : "";
-
+      typeof body.strikerId === "string" ? body.strikerId.trim() : "";
     const nonStrikerId =
-      typeof body.nonStrikerId === "string"
-        ? body.nonStrikerId.trim()
-        : "";
-
+      typeof body.nonStrikerId === "string" ? body.nonStrikerId.trim() : "";
     const bowlerAId =
-      typeof body.bowlerAId === "string"
-        ? body.bowlerAId.trim()
-        : "";
-
+      typeof body.bowlerAId === "string" ? body.bowlerAId.trim() : "";
     const bowlerBId =
-      typeof body.bowlerBId === "string"
-        ? body.bowlerBId.trim()
-        : "";
-   
-      console.log("START INNINGS DEBUG", {
-        matchId,
-        inningsNumber,
-        battingTeamId,
-        bowlingTeamId,
-        strikerId,
-        nonStrikerId,
-        bowlerAId,
-        bowlerBId,
-    });
-    
+      typeof body.bowlerBId === "string" ? body.bowlerBId.trim() : "";
+
     const innings = await startInnings({
       matchId,
       inningsNumber,
@@ -85,32 +58,51 @@ export async function POST(
       bowlerBId,
     });
 
-    return NextResponse.json(innings, {
-      status: 201,
+    const match = await prisma.match.findUniqueOrThrow({
+      where: { id: matchId },
+      select: {
+        inningsPerMatch: true,
+        innings: {
+          where: { inningsNumber: { lt: inningsNumber } },
+          orderBy: { inningsNumber: "asc" },
+          select: {
+            inningsNumber: true,
+            battingTeamId: true,
+            totalRuns: true,
+          },
+        },
+      },
     });
+
+    const target = calculateTarget({
+      inningsNumber,
+      inningsPerMatch: match.inningsPerMatch as 2 | 4,
+      battingTeamId,
+      bowlingTeamId,
+      previousInnings: match.innings,
+    });
+
+    const correctedInnings = await prisma.innings.update({
+      where: { id: innings.id },
+      data: { target },
+    });
+
+    return NextResponse.json(correctedInnings, { status: 201 });
   } catch (error) {
     console.error("POST start innings error:", error);
 
     const message =
-      error instanceof Error
-        ? error.message
-        : "Failed to start innings.";
+      error instanceof Error ? error.message : "Failed to start innings.";
 
     if (message === "Match not found.") {
-      return NextResponse.json(
-        { error: message },
-        { status: 404 },
-      );
+      return NextResponse.json({ error: message }, { status: 404 });
     }
 
     if (
       message.includes("already exists") ||
       message === "Opening bowlers must be different."
     ) {
-      return NextResponse.json(
-        { error: message },
-        { status: 409 },
-      );
+      return NextResponse.json({ error: message }, { status: 409 });
     }
 
     if (
@@ -126,15 +118,9 @@ export async function POST(
       message === "Bowler A is not among the bowling match players." ||
       message === "Bowler B is not among the bowling match players."
     ) {
-      return NextResponse.json(
-        { error: message },
-        { status: 400 },
-      );
+      return NextResponse.json({ error: message }, { status: 400 });
     }
 
-    return NextResponse.json(
-      { error: message },
-      { status: 500 },
-    );
+    return NextResponse.json({ error: message }, { status: 500 });
   }
 }
