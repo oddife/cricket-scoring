@@ -383,24 +383,54 @@ export async function startInnings(
     );
   }
 
+  const unfinishedPreviousInnings =
+    previousInnings.find(
+      (innings) => innings.status !== "COMPLETED",
+    );
+
+  if (unfinishedPreviousInnings) {
+    throw new Error(
+      `Innings ${unfinishedPreviousInnings.inningsNumber} must be completed before starting innings ${input.inningsNumber}.`,
+    );
+  }
+
   const battingTeamPreviousRuns = previousInnings
-    .filter((innings) => innings.battingTeamId === input.battingTeamId)
-    .reduce((sum, innings) => sum + innings.totalRuns, 0);
+    .filter(
+      (innings) =>
+        innings.battingTeamId ===
+        input.battingTeamId,
+    )
+    .reduce(
+      (sum, innings) =>
+        sum + innings.totalRuns,
+      0,
+    );
 
   const opposingTeamPreviousRuns = previousInnings
-    .filter((innings) => innings.battingTeamId === input.bowlingTeamId)
-    .reduce((sum, innings) => sum + innings.totalRuns, 0);
+    .filter(
+      (innings) =>
+        innings.battingTeamId ===
+        input.bowlingTeamId,
+    )
+    .reduce(
+      (sum, innings) =>
+        sum + innings.totalRuns,
+      0,
+    );
 
-  // Target is the minimum score required to win. For innings 2 this is
-  // innings 1 score + 1. For innings 4 it is the opponent's aggregate
-  // total minus the batting side's previous aggregate + 1.
+  // Only innings 2 and 4 are chase innings.
+  // Innings 1 and 3 are scoring innings and
+  // deliberately have no target.
   const target =
-    input.inningsNumber === 1
-      ? null
-      : Math.max(
+    input.inningsNumber === 2 ||
+    input.inningsNumber === 4
+      ? Math.max(
           1,
-          opposingTeamPreviousRuns - battingTeamPreviousRuns + 1,
-        );
+          opposingTeamPreviousRuns -
+            battingTeamPreviousRuns +
+            1,
+        )
+      : null;
 
   const innings =
     await prisma.innings.create({
