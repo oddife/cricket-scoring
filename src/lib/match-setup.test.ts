@@ -187,7 +187,7 @@ describe("Match setup and innings", () => {
         })),
       }),
     ).rejects.toThrow(
-      "A match player group must contain exactly 7 players.",
+      "A team must have at least 3 and at most 7 match players.",
     );
   });
 
@@ -294,6 +294,18 @@ describe("Match setup and innings", () => {
       playersB,
     } = await setupBothMatchPlayers(7, 2);
 
+    // Innings must be started sequentially.
+    await startInnings({
+      matchId: match.id,
+      inningsNumber: 1,
+      battingTeamId: teamA.id,
+      bowlingTeamId: teamB.id,
+      strikerId: playersA[0].id,
+      nonStrikerId: playersA[1].id,
+      bowlerAId: playersB[0].id,
+      bowlerBId: playersB[1].id,
+    });
+
     const innings = await startInnings({
       matchId: match.id,
       inningsNumber: 2,
@@ -334,6 +346,29 @@ describe("Match setup and innings", () => {
       playersA,
       playersB,
     } = await setupBothMatchPlayers(7, 4);
+
+    // Innings must be started sequentially.
+    await startInnings({
+      matchId: match.id,
+      inningsNumber: 1,
+      battingTeamId: teamA.id,
+      bowlingTeamId: teamB.id,
+      strikerId: playersA[0].id,
+      nonStrikerId: playersA[1].id,
+      bowlerAId: playersB[0].id,
+      bowlerBId: playersB[1].id,
+    });
+
+    await startInnings({
+      matchId: match.id,
+      inningsNumber: 2,
+      battingTeamId: teamB.id,
+      bowlingTeamId: teamA.id,
+      strikerId: playersB[0].id,
+      nonStrikerId: playersB[1].id,
+      bowlerAId: playersA[0].id,
+      bowlerBId: playersA[1].id,
+    });
 
     const innings3 = await startInnings({
       matchId: match.id,
