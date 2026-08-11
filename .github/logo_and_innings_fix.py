@@ -13,18 +13,15 @@ new_logo = '''          <div className="flex items-center gap-3">
             </button>
             <div className="text-lg font-bold uppercase tracking-tight">Cricket Scorer</div>
           </div>'''
-if old_logo not in text:
-    raise SystemExit('Top-bar logo block not found')
-text = text.replace(old_logo, new_logo, 1)
+if old_logo in text:
+    text = text.replace(old_logo, new_logo, 1)
 
 old_start = '''                <div className="my-4 border-y border-slate-200 py-3 [color-scheme:dark]">
                   <div className="space-y-1.5">'''
 start_idx = text.find(old_start)
 if start_idx == -1:
     raise SystemExit('Old innings panel start not found')
-old_end = '''                </div>
-
-                <p className="text-xs font-bold uppercase tracking-wide text-slate-600">Match Format</p>'''
+old_end = '''                <p className="text-xs font-bold uppercase tracking-wide text-slate-600">Match Format</p>'''
 end_idx = text.find(old_end, start_idx)
 if end_idx == -1:
     raise SystemExit('Old innings panel end not found')
@@ -57,6 +54,6 @@ new_panel = '''                <div className="my-4 overflow-hidden rounded-lg b
                   </div>
                 </div>
 
-'''
-text = text[:start_idx] + new_panel + text[end_idx:]
+                <p className="text-xs font-bold uppercase tracking-wide text-slate-600">Match Format</p>'''
+text = text[:start_idx] + new_panel + text[end_idx + len(old_end):]
 page.write_text(text)
