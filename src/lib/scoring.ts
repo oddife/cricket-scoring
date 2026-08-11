@@ -723,6 +723,16 @@ export async function recordPersistentDelivery(
       },
     );
 
+  if (
+    inningsComplete &&
+    innings.inningsNumber === innings.match.inningsPerMatch
+  ) {
+    await prisma.match.update({
+      where: { id: innings.matchId },
+      data: { status: "COMPLETED" },
+    });
+  }
+
   return {
     delivery:
       transactionResult.created,

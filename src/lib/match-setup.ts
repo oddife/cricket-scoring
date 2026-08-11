@@ -383,6 +383,25 @@ export async function startInnings(
     );
   }
 
+  const battingTeamPreviousRuns = previousInnings
+    .filter((innings) => innings.battingTeamId === input.battingTeamId)
+    .reduce((sum, innings) => sum + innings.totalRuns, 0);
+
+  const opposingTeamPreviousRuns = previousInnings
+    .filter((innings) => innings.battingTeamId === input.bowlingTeamId)
+    .reduce((sum, innings) => sum + innings.totalRuns, 0);
+
+  // Target is the minimum score required to win. For innings 2 this is
+  // innings 1 score + 1. For innings 4 it is the opponent's aggregate
+  // total minus the batting side's previous aggregate + 1.
+  const target =
+    input.inningsNumber === 1
+      ? null
+      : Math.max(
+          1,
+          opposingTeamPreviousRuns - battingTeamPreviousRuns + 1,
+        );
+
   const innings =
     await prisma.innings.create({
       data: {
@@ -399,6 +418,7 @@ export async function startInnings(
         wickets: 0,
         legalBalls: 0,
         singleBatEnabled: false,
+        target,
         currentStrikerId:
           input.strikerId,
         currentNonStrikerId:

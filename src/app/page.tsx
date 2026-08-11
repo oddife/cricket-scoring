@@ -373,7 +373,15 @@ const [resumingMatchId, setResumingMatchId] =
 
   type LiveTab = "LIVE" | "SCORECARD" | "PLAYERS" | "OVERS" | "PARTNERSHIPS" | "WAGON_WHEEL" | "MATCH_INFO";
   const [liveTab, setLiveTab] = useState<LiveTab>("LIVE");
+  type LiveInningsHistory = {
+    inningsNumber: number;
+    totalRuns: number;
+    battingTeamId: string;
+    target: number | null;
+  };
+
   const [liveInningsNumber, setLiveInningsNumber] = useState(1);
+  const [liveInningsHistory, setLiveInningsHistory] = useState<LiveInningsHistory[]>([]);
   const [nextInningsStrikerId, setNextInningsStrikerId] = useState("");
   const [nextInningsNonStrikerId, setNextInningsNonStrikerId] = useState("");
   const [nextInningsBowlerAId, setNextInningsBowlerAId] = useState("");
@@ -1140,6 +1148,15 @@ const [resumingMatchId, setResumingMatchId] =
         )?.playerId ?? "",
       );
 
+      setLiveInningsHistory(
+        innings.map((item: { inningsNumber: number; totalRuns: number; battingTeamId: string; target?: number | null }) => ({
+          inningsNumber: Number(item.inningsNumber),
+          totalRuns: Number(item.totalRuns ?? 0),
+          battingTeamId: item.battingTeamId,
+          target: item.target ?? null,
+        })),
+      );
+
       setLiveInningsId(currentInnings.id);
       setLiveRuns(
         Number(currentInnings.totalRuns ?? 0),
@@ -1719,6 +1736,7 @@ const [resumingMatchId, setResumingMatchId] =
       setLiveOverRuns([]);
       setLiveInningsComplete(false);
       setLiveInningsNumber(1);
+      setLiveInningsHistory([]);
       setLiveTab("LIVE");
       setLiveNeedsManualSwap(false);
       setNextOverBowlerAId("");
@@ -1778,6 +1796,12 @@ const [resumingMatchId, setResumingMatchId] =
 
     const battingTeamId = liveBowlingTeamId;
     const bowlingTeamId = liveBattingTeamId;
+    const completedInningsSnapshot: LiveInningsHistory = {
+      inningsNumber: liveInningsNumber,
+      totalRuns: liveRuns,
+      battingTeamId: liveBattingTeamId,
+      target: liveInningsHistory.find((item) => item.inningsNumber === liveInningsNumber)?.target ?? null,
+    };
 
     try {
       setLoadingStartInnings(true);
@@ -1805,6 +1829,10 @@ const [resumingMatchId, setResumingMatchId] =
         throw new Error(data?.error || "Failed to start next innings.");
       }
 
+      setLiveInningsHistory((current) => [
+        ...current.filter((item) => item.inningsNumber !== completedInningsSnapshot.inningsNumber),
+        completedInningsSnapshot,
+      ]);
       setLiveInningsId(data.id);
       setLiveInningsNumber(nextNumber);
       setLiveBattingTeamId(battingTeamId);
@@ -2299,6 +2327,42 @@ const [resumingMatchId, setResumingMatchId] =
     setError("");
   }
 
+  async function endCurrentMatch() {
+    if (!createdMatchId) {
+      setError("Match ID is not available.");
+      return;
+    }
+
+    if (!window.confirm("End this match? It will be moved to Previous Matches.")) {
+      return;
+    }
+
+    try {
+      setLiveLoading(true);
+      setError("");
+      const response = await fetch(`/api/matches/${createdMatchId}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ status: "COMPLETED" }),
+      });
+      const data = await response.json();
+      if (!response.ok) {
+        throw new Error(data?.error || "Failed to end match.");
+      }
+
+      setPageMode("DASHBOARD");
+      if (selectedTournament) {
+        await loadLiveMatches(selectedTournament.id);
+        await loadCompletedMatches(selectedTournament.id);
+      }
+    } catch (err) {
+      console.error(err);
+      setError(err instanceof Error ? err.message : "Failed to end match.");
+    } finally {
+      setLiveLoading(false);
+    }
+  }
+
   function LiveScoring() {
     const battingTeam = selectedTournament?.teams.find(
       (team) => team.team.id === liveBattingTeamId,
@@ -2321,6 +2385,21 @@ const [resumingMatchId, setResumingMatchId] =
     const projected = legalBalls > 0
       ? Math.round((liveRuns / legalBalls) * oversPerInnings * 6)
       : 0;
+
+    const currentInningsRecord = liveInningsHistory.find(
+      (item) => item.inningsNumber === liveInningsNumber,
+    );
+    const liveTarget = currentInningsRecord?.target ?? null;
+    const runsNeeded = liveTarget !== null
+      ? Math.max(liveTarget - liveRuns, 0)
+      : null;
+
+    const firstInnings = liveInningsHistory.find((item) => item.inningsNumber === 1);
+    const secondInnings = liveInningsHistory.find((item) => item.inningsNumber === 2);
+    const firstInningsLeadOrDeficit =
+      liveInningsNumber >= 2 && firstInnings && secondInnings
+        ? secondInnings.totalRuns - firstInnings.totalRuns
+        : null;
 
     const currentOverNumber = completedOvers + 1;
     const currentOverDeliveries = liveDeliveries.filter(
@@ -2594,16 +2673,8 @@ const [resumingMatchId, setResumingMatchId] =
                 {label}
               </button>
             ))}
-            <button type="button" onClick={() => {
-              if (window.confirm("End this match?")) {
-                setPageMode("DASHBOARD");
-                if (selectedTournament) {
-                  void loadLiveMatches(selectedTournament.id);
-                  void loadCompletedMatches(selectedTournament.id);
-                }
-              }
-            }} className="mt-auto rounded-lg bg-red-500 px-3 py-3 text-center text-sm font-bold hover:bg-red-600">
-              End Match
+            <button type="button" onClick={() => void endCurrentMatch()} disabled={liveLoading} className="mt-auto rounded-lg bg-red-500 px-3 py-3 text-center text-sm font-bold hover:bg-red-600 disabled:cursor-not-allowed disabled:opacity-50">
+              {liveLoading ? "Ending..." : "End Match"}
             </button>
           </aside>
 
@@ -2674,10 +2745,19 @@ const [resumingMatchId, setResumingMatchId] =
                       </div>
                     </div>
                   </div>
-                  <div className="grid grid-cols-3 gap-3 px-5 py-3 text-center text-xs font-semibold sm:px-7">
+                  <div className="grid gap-2 px-5 py-3 text-center text-xs font-semibold sm:grid-cols-4 sm:px-7">
                     <div>CRR: <span className="font-bold">{runRate}</span></div>
                     <div>PROJECTED: <span className="font-bold">{projected}</span></div>
                     <div>Overs Remaining: <span className="font-bold">{oversRemaining}</span></div>
+                    <div>
+                      {liveTarget !== null ? (
+                        <>TARGET: <span className="font-black">{liveTarget}</span> · NEED <span className="font-black">{runsNeeded}</span></>
+                      ) : firstInningsLeadOrDeficit !== null ? (
+                        <>{firstInningsLeadOrDeficit >= 0 ? "1ST INN LEAD" : "1ST INN DEFICIT"}: <span className="font-black">{Math.abs(firstInningsLeadOrDeficit)}</span></>
+                      ) : (
+                        <>1ST INNINGS</>
+                      )}
+                    </div>
                   </div>
                 </div>
 
@@ -2751,6 +2831,18 @@ const [resumingMatchId, setResumingMatchId] =
                   )}
                 </div>
 
+                {liveNeedsManualSwap && (
+                  <div className="rounded-xl border border-amber-300 bg-amber-50 p-4 shadow-sm [color-scheme:dark]">
+                    <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                      <div>
+                        <p className="text-xs font-black uppercase tracking-wide text-amber-800">Over Complete</p>
+                        <p className="mt-1 text-sm font-semibold text-amber-900">Swap batsmen before recording the next delivery.</p>
+                      </div>
+                      <button type="button" onClick={() => void manuallySwapStrikers()} disabled={liveLoading} className="h-11 shrink-0 rounded-lg bg-amber-500 px-5 font-bold text-white hover:bg-amber-600 disabled:opacity-40 [color-scheme:dark]">Swap Batsmen</button>
+                    </div>
+                  </div>
+                )}
+
                 {/* Delivery controls */}
                 <div id="live-deliveries" className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm [color-scheme:dark]">
                   <div className="mb-3 flex items-center justify-between"><p className="text-xs font-bold uppercase tracking-wide text-slate-600">Record Delivery</p><span className="text-xs text-slate-500">{liveBowler?.name ?? "No bowler selected"}</span></div>
@@ -2796,14 +2888,6 @@ const [resumingMatchId, setResumingMatchId] =
                   <p className="text-xs font-bold uppercase tracking-wide text-slate-600">Next Bowler</p>
                   <p className="mt-2 text-sm font-bold">{liveBowler?.name ?? "Select next bowler"}</p>
                 </div>
-
-                {liveNeedsManualSwap && (
-                  <div className="rounded-xl border border-amber-300 bg-amber-50 p-4 shadow-sm [color-scheme:dark]">
-                    <p className="text-xs font-black uppercase tracking-wide text-amber-800">Over Complete</p>
-                    <p className="mt-1 text-sm font-semibold text-amber-900">Double Bowler over finished. Swap batsmen for the next over.</p>
-                    <button type="button" onClick={() => void manuallySwapStrikers()} disabled={liveLoading} className="mt-3 h-11 w-full rounded-lg bg-amber-500 font-bold text-white hover:bg-amber-600 disabled:opacity-40 [color-scheme:dark]">Swap Batsmen</button>
-                  </div>
-                )}
 
                 <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm [color-scheme:dark]">
                   <p className="text-xs font-bold uppercase tracking-wide text-slate-600">Recent Deliveries</p>
