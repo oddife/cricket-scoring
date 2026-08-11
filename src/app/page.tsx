@@ -361,6 +361,7 @@ const [resumingMatchId, setResumingMatchId] =
   const [customDeliveryType, setCustomDeliveryType] =
     useState<"BAT" | "WIDE" | "NO_BALL" | "BYE" | "LEG_BYE">("BAT");
   const [customDeliveryRuns, setCustomDeliveryRuns] = useState("5");
+  const [customDeliveryWicket, setCustomDeliveryWicket] = useState(false);
   const [pendingWicketExtraType, setPendingWicketExtraType] =
     useState<"WIDE" | "NO_BALL" | "BYE" | "LEG_BYE" | null>(null);
   const [pendingWicketExtraRuns, setPendingWicketExtraRuns] =
@@ -2085,23 +2086,38 @@ const [resumingMatchId, setResumingMatchId] =
     }
   }
 
-  function openWicketPanel(extraType: "WIDE" | "NO_BALL" | "BYE" | "LEG_BYE" | null = null, runsExtra = 0) {
+  function openWicketPanel(
+    extraType: "WIDE" | "NO_BALL" | "BYE" | "LEG_BYE" | null = null,
+    runsExtra = 0,
+  ) {
     setPendingWicketExtraType(extraType);
     setPendingWicketExtraRuns(runsExtra);
     setDismissedPlayerId(liveStrikerId);
     setRunOutDismissedEnd("STRIKER");
     setReplacementPlayerId("");
-    setWicketType("BOWLED");
+    setWicketType(extraType ? "RUN_OUT" : "BOWLED");
     setShowWicketPanel(true);
   }
 
   function openCustomDeliveryPanel() {
     setCustomDeliveryType("BAT");
     setCustomDeliveryRuns("5");
+    setCustomDeliveryWicket(false);
     setShowCustomDeliveryPanel(true);
   }
 
-  async function submitCustomDelivery(includeWicket = false) {
+  function openExtraDeliveryPanel(
+    type: "WIDE" | "NO_BALL" | "BYE" | "LEG_BYE",
+  ) {
+    setCustomDeliveryType(type);
+    setCustomDeliveryRuns(
+      type === "WIDE" || type === "NO_BALL" ? "0" : "1",
+    );
+    setCustomDeliveryWicket(false);
+    setShowCustomDeliveryPanel(true);
+  }
+
+  async function submitCustomDelivery(includeWicket = customDeliveryWicket) {
     const parsedRuns = Number(customDeliveryRuns);
 
     if (!Number.isInteger(parsedRuns) || parsedRuns < 0 || parsedRuns > 99) {
@@ -2109,20 +2125,25 @@ const [resumingMatchId, setResumingMatchId] =
       return;
     }
 
-    if (customDeliveryType !== "BAT" && parsedRuns < 1) {
-      setError("An extra must be at least 1 run.");
-      return;
+    let totalExtraRuns = parsedRuns;
+
+    if (customDeliveryType === "WIDE" || customDeliveryType === "NO_BALL") {
+      if (parsedRuns > 98) {
+        setError("Additional runs must be between 0 and 98.");
+        return;
+      }
+      totalExtraRuns = parsedRuns + 1;
+    } else if (customDeliveryType === "BYE" || customDeliveryType === "LEG_BYE") {
+      if (parsedRuns < 1) {
+        setError("Bye and leg-bye runs must be at least 1.");
+        return;
+      }
     }
 
     setShowCustomDeliveryPanel(false);
 
-    if (includeWicket) {
-      const wicketExtraType =
-        customDeliveryType === "BAT" ? null : customDeliveryType;
-      const wicketExtraRuns =
-        customDeliveryType === "BAT" ? 0 : parsedRuns;
-
-      openWicketPanel(wicketExtraType, wicketExtraRuns);
+    if (includeWicket && customDeliveryType !== "BAT") {
+      openWicketPanel(customDeliveryType, totalExtraRuns);
       return;
     }
 
@@ -2132,7 +2153,7 @@ const [resumingMatchId, setResumingMatchId] =
     }
 
     await recordLiveDelivery({
-      runsExtra: parsedRuns,
+      runsExtra: totalExtraRuns,
       extraType: customDeliveryType,
     });
   }
@@ -3003,17 +3024,13 @@ const [resumingMatchId, setResumingMatchId] =
                     {recordButton("6", "bg-blue-600 text-white hover:bg-blue-700", () => void recordLiveDelivery({ runsBat: 6 }))}
                   </div>
                   <div className="mt-2 grid grid-cols-2 gap-2 sm:grid-cols-4">
-                    {recordButton("WIDE", "bg-violet-600 text-white hover:bg-violet-700", () => void recordLiveDelivery({ runsExtra: 1, extraType: "WIDE" }))}
-                    {recordButton("NO BALL", "bg-violet-600 text-white hover:bg-violet-700", () => void recordLiveDelivery({ runsExtra: 1, extraType: "NO_BALL" }))}
-                    {recordButton("BYE", "bg-orange-500 text-white hover:bg-orange-600", () => void recordLiveDelivery({ runsExtra: 1, extraType: "BYE" }))}
-                    {recordButton("LEG BYE", "bg-orange-500 text-white hover:bg-orange-600", () => void recordLiveDelivery({ runsExtra: 1, extraType: "LEG_BYE" }))}
+                    {recordButton("WIDE", "bg-violet-600 text-white hover:bg-violet-700", () => openExtraDeliveryPanel("WIDE"))}
+                    {recordButton("NO BALL", "bg-violet-600 text-white hover:bg-violet-700", () => openExtraDeliveryPanel("NO_BALL"))}
+                    {recordButton("BYE", "bg-orange-600 text-white hover:bg-orange-700", () => openExtraDeliveryPanel("BYE"))}
+                    {recordButton("LEG BYE", "bg-orange-600 text-white hover:bg-orange-700", () => openExtraDeliveryPanel("LEG_BYE"))}
                   </div>
                   <div className="mt-2 grid grid-cols-1 gap-2 sm:grid-cols-3">
-                    {recordButton("MORE RUNS", "bg-slate-800 text-white hover:bg-slate-900", () => openCustomDeliveryPanel())}
-                    {recordButton("WIDE + WICKET", "bg-violet-900 text-white hover:bg-violet-950", () => openWicketPanel("WIDE", 1))}
-                    {recordButton("NO BALL + WICKET", "bg-violet-900 text-white hover:bg-violet-950", () => openWicketPanel("NO_BALL", 1))}
-                    {recordButton("BYE + WICKET", "bg-orange-600 text-white hover:bg-orange-700", () => openWicketPanel("BYE", 1))}
-                    {recordButton("LEG BYE + WICKET", "bg-orange-600 text-white hover:bg-orange-700", () => openWicketPanel("LEG_BYE", 1))}
+                    {recordButton("MORE RUNS", "bg-slate-800 text-white hover:bg-slate-900 col-span-1", () => openCustomDeliveryPanel())}
                   </div>
                   <button type="button" disabled={liveLoading || liveInningsComplete || !liveBowlerId} onClick={() => openWicketPanel()} className="mt-2 h-20 w-full rounded-xl bg-red-500 text-lg font-black text-white hover:bg-red-600 disabled:opacity-40 [color-scheme:dark]">WICKET</button>
                 </div>
@@ -3110,41 +3127,76 @@ const [resumingMatchId, setResumingMatchId] =
             </div>
           </div>
         )}
-
         {showCustomDeliveryPanel && (
           <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/60 p-4 backdrop-blur-sm">
             <div className="w-full max-w-lg rounded-2xl bg-white p-6 shadow-2xl [color-scheme:dark]">
-              <p className="text-xs font-bold uppercase tracking-wide text-blue-600">Custom Delivery</p>
-              <h3 className="mt-1 text-2xl font-black">Record any run value</h3>
-              <p className="mt-2 text-sm text-slate-500">
-                Use this for 5+ bat runs, overthrows, or multiple extras.
+              <p className="text-xs font-bold uppercase tracking-wide text-blue-600">
+                {customDeliveryType === "BAT" ? "More Runs" : customDeliveryType.replace("_", " ")}
               </p>
+              <h3 className="mt-1 text-2xl font-black">
+                {customDeliveryType === "BAT" ? "Record any run value" : "Additional delivery runs"}
+              </h3>
 
-              <div className="mt-5 space-y-4">
-                <div>
-                  <label htmlFor="customDeliveryType" className="mb-2 block text-sm font-semibold">Delivery type</label>
-                  <select
-                    id="customDeliveryType"
-                    value={customDeliveryType}
-                    onChange={(event) => setCustomDeliveryType(event.target.value as typeof customDeliveryType)}
-                    className="h-12 w-full rounded-lg border border-slate-700 bg-slate-950 px-3 text-white [color-scheme:dark]"
-                  >
-                    <option value="BAT">Bat runs</option>
-                    <option value="WIDE">Wide runs</option>
-                    <option value="NO_BALL">No-ball runs</option>
-                    <option value="BYE">Bye runs</option>
-                    <option value="LEG_BYE">Leg-bye runs</option>
-                  </select>
-                </div>
+              {customDeliveryType !== "BAT" ? (
+                <div className="mt-5 space-y-4">
+                  <div className="grid grid-cols-4 gap-2">
+                    {(customDeliveryType === "WIDE" || customDeliveryType === "NO_BALL"
+                      ? [0, 1, 2]
+                      : [1, 2, 3]
+                    ).map((runs) => (
+                      <button
+                        key={runs}
+                        type="button"
+                        onClick={() => setCustomDeliveryRuns(String(runs))}
+                        className={`h-14 rounded-xl border text-lg font-black ${
+                          Number(customDeliveryRuns) === runs
+                            ? "border-blue-600 bg-blue-600 text-white"
+                            : "border-slate-300 bg-white text-slate-900"
+                        }`}
+                      >
+                        {customDeliveryType === "WIDE" || customDeliveryType === "NO_BALL" ? `+${runs}` : runs}
+                      </button>
+                    ))}
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const value = window.prompt(
+                          customDeliveryType === "WIDE" || customDeliveryType === "NO_BALL"
+                            ? "Enter additional runs (0-98):"
+                            : "Enter total bye/leg-bye runs (1-99):",
+                          customDeliveryRuns,
+                        );
+                        if (value !== null) setCustomDeliveryRuns(value);
+                      }}
+                      className="h-14 rounded-xl border border-slate-300 bg-slate-100 text-sm font-black text-slate-900"
+                    >
+                      MANUAL
+                    </button>
+                  </div>
 
-                <div>
-                  <label htmlFor="customDeliveryRuns" className="mb-2 block text-sm font-semibold">
-                    {customDeliveryType === "BAT" ? "Bat runs" : "Extra runs"}
+                  <div className="rounded-xl bg-slate-100 px-4 py-3 text-sm text-slate-700">
+                    {customDeliveryType === "WIDE" || customDeliveryType === "NO_BALL"
+                      ? `Base 1 run + ${customDeliveryRuns || "0"} additional = ${Number(customDeliveryRuns || 0) + 1} total runs.`
+                      : `${customDeliveryRuns || "0"} total ${customDeliveryType === "BYE" ? "bye" : "leg-bye"} runs.`}
+                  </div>
+
+                  <label className="flex items-center gap-3 rounded-xl border border-slate-300 bg-white px-4 py-3 font-bold text-slate-900">
+                    <input
+                      type="checkbox"
+                      checked={customDeliveryWicket}
+                      onChange={(event) => setCustomDeliveryWicket(event.target.checked)}
+                      className="h-5 w-5 accent-red-500"
+                    />
+                    Wicket on this delivery
                   </label>
+                </div>
+              ) : (
+                <div className="mt-5">
+                  <label htmlFor="customDeliveryRuns" className="mb-2 block text-sm font-semibold">Bat runs</label>
                   <input
                     id="customDeliveryRuns"
                     type="number"
-                    min={customDeliveryType === "BAT" ? 0 : 1}
+                    min={0}
                     max={99}
                     step={1}
                     inputMode="numeric"
@@ -3153,24 +3205,12 @@ const [resumingMatchId, setResumingMatchId] =
                     className="h-12 w-full rounded-lg border border-slate-700 bg-slate-950 px-3 text-white [color-scheme:dark]"
                   />
                 </div>
-
-                <div className="rounded-lg bg-slate-100 p-3 text-sm text-slate-600">
-                  {customDeliveryType === "BAT"
-                    ? "Example: 5 runs from an overthrow."
-                    : customDeliveryType === "WIDE"
-                      ? "Example: a wide that runs for 5 total wides."
-                      : customDeliveryType === "NO_BALL"
-                        ? "Example: 2 no-ball extras."
-                        : customDeliveryType === "BYE"
-                          ? "Example: 4 byes."
-                          : "Example: 3 leg-byes."}
-                </div>
-              </div>
+              )}
 
               <div className="mt-6 grid grid-cols-2 gap-3">
                 <button
                   type="button"
-                  onClick={() => setShowCustomDeliveryPanel(false)}
+                  onClick={() => { setShowCustomDeliveryPanel(false); setCustomDeliveryWicket(false); }}
                   className="h-12 rounded-lg border border-slate-300 font-semibold [color-scheme:dark]"
                 >
                   Cancel
@@ -3178,23 +3218,12 @@ const [resumingMatchId, setResumingMatchId] =
                 <button
                   type="button"
                   disabled={liveLoading || liveInningsComplete || !liveBowlerId}
-                  onClick={() => void submitCustomDelivery(false)}
+                  onClick={() => void submitCustomDelivery()}
                   className="h-12 rounded-lg bg-blue-600 font-bold text-white disabled:opacity-40 [color-scheme:dark]"
                 >
-                  Record Delivery
+                  {customDeliveryWicket ? "Continue to Wicket" : "Record Delivery"}
                 </button>
               </div>
-
-              {customDeliveryType !== "BAT" && (
-                <button
-                  type="button"
-                  disabled={liveLoading || liveInningsComplete || !liveBowlerId}
-                  onClick={() => void submitCustomDelivery(true)}
-                  className="mt-3 h-12 w-full rounded-lg bg-violet-700 font-bold text-white disabled:opacity-40 [color-scheme:dark]"
-                >
-                  Continue as {customDeliveryType === "WIDE" ? "Wide" : customDeliveryType === "NO_BALL" ? "No Ball" : customDeliveryType === "BYE" ? "Bye" : "Leg Bye"} + Wicket
-                </button>
-              )}
             </div>
           </div>
         )}
