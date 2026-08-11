@@ -1,0 +1,35 @@
+name: Fix bye and leg-bye wickets
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  fix:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: feature/custom-delivery-runs
+          fetch-depth: 0
+      - name: Patch page
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          p=Path('src/app/page.tsx')
+          s=p.read_text(encoding='utf-8-sig')
+          s=s.replace('useState<"WIDE" | "NO_BALL" | null>(null);','useState<"WIDE" | "NO_BALL" | "BYE" | "LEG_BYE" | null>(null);',1)
+          s=s.replace('function openWicketPanel(extraType: "WIDE" | "NO_BALL" | null = null, runsExtra = 0)', 'function openWicketPanel(extraType: "WIDE" | "NO_BALL" | "BYE" | "LEG_BYE" | null = null, runsExtra = 0)',1)
+          old='''    if (includeWicket && customDeliveryType !== "WIDE" && customDeliveryType !== "NO_BALL") {\n      setError("A wicket with an extra is currently supported for Wide and No Ball.");\n      return;\n    }\n\n    setShowCustomDeliveryPanel(false);\n\n    if (includeWicket) {\n      if (customDeliveryType !== "WIDE" && customDeliveryType !== "NO_BALL") {\n        setError("A wicket with an extra is currently supported for Wide and No Ball.");\n        return;\n      }\n\n      openWicketPanel(customDeliveryType, parsedRuns);\n      return;\n    }'''
+          new='''    setShowCustomDeliveryPanel(false);\n\n    if (includeWicket) {\n      const wicketExtraType =\n        customDeliveryType === "BAT" ? null : customDeliveryType;\n      const wicketExtraRuns =\n        customDeliveryType === "BAT" ? 0 : parsedRuns;\n\n      openWicketPanel(wicketExtraType, wicketExtraRuns);\n      return;\n    }'''
+          if old not in s: raise SystemExit('custom wicket block not found')
+          s=s.replace(old,new,1)
+          p.write_text(s,encoding='utf-8')
+          PY
+          git config user.name github-actions[bot]
+          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+          git add src/app/page.tsx
+          git commit -m "fix: allow run outs on byes and leg-byes"
+          git push origin HEAD:feature/custom-delivery-runs
