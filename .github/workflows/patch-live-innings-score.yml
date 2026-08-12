@@ -1,0 +1,112 @@
+name: Patch live innings score
+
+on:
+  push:
+    branches:
+      - fix/top-innings-score
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: fix/top-innings-score
+          fetch-depth: 0
+
+      - name: Apply live innings score fix
+        shell: python
+        run: |
+          from pathlib import Path
+          p = Path("src/app/page.tsx")
+          s = p.read_text()
+
+          replacements = [
+            (
+              '  type LiveInningsHistory = {\n    inningsNumber: number;\n    totalRuns: number;\n    battingTeamId: string;\n    target: number | null;\n  };',
+              '  type LiveInningsHistory = {\n    inningsNumber: number;\n    totalRuns: number;\n    wickets: number;\n    battingTeamId: string;\n    target: number | null;\n  };'
+            ),
+            (
+              '          inningsNumber: Number(item.inningsNumber),\n          totalRuns: Number(item.totalRuns ?? 0),\n          battingTeamId: item.battingTeamId,',
+              '          inningsNumber: Number(item.inningsNumber),\n          totalRuns: Number(item.totalRuns ?? 0),\n          wickets: Number(item.wickets ?? 0),\n          battingTeamId: item.battingTeamId,'
+            ),
+            (
+              '      setLiveInningsHistory([\n        {\n        inningsNumber: 1,\n        totalRuns: Number(data.totalRuns ?? 0),\n        battingTeamId: data.battingTeamId ?? inningsOneBattingTeamId,',
+              '      setLiveInningsHistory([\n        {\n        inningsNumber: 1,\n        totalRuns: Number(data.totalRuns ?? 0),\n        wickets: Number(data.wickets ?? 0),\n        battingTeamId: data.battingTeamId ?? inningsOneBattingTeamId,'
+            ),
+            (
+              '      totalRuns: liveRuns,\n      battingTeamId: liveBattingTeamId,\n      target: liveInningsHistory.find((item) => item.inningsNumber === liveInningsNumber)?.target ?? null,',
+              '      totalRuns: liveRuns,\n      wickets: liveWickets,\n      battingTeamId: liveBattingTeamId,\n      target: liveInningsHistory.find((item) => item.inningsNumber === liveInningsNumber)?.target ?? null,'
+            ),
+            (
+              '          totalRuns: Number(data.totalRuns ?? 0),\n          battingTeamId,\n          target: data.target ?? null,',
+              '          totalRuns: Number(data.totalRuns ?? 0),\n          wickets: Number(data.wickets ?? 0),\n          battingTeamId,\n          target: data.target ?? null,'
+            ),
+            (
+              '  async function refreshLiveInnings(inningsId = liveInningsId) {',
+              '  async function refreshLiveInnings(inningsId = liveInningsId, matchId = createdMatchId) {'
+            ),
+            (
+              '      const innings = data.innings ?? data;\n      const deliveries = Array.isArray(data.deliveries)',
+              '      const innings = data.innings ?? data;\n      const deliveries = Array.isArray(data.deliveries)'
+            ),
+            (
+              '      setLiveDeliveries(deliveries);\n      setLiveBattingTeamId(innings.battingTeamId ?? "");',
+              '      setLiveDeliveries(deliveries);\n\n      if (matchId) {\n        try {\n          const matchResponse = await fetch(`/api/matches/${matchId}`, { cache: "no-store" });\n          const matchData = await matchResponse.json();\n          const matchInnings = Array.isArray(matchData?.match?.innings)\n            ? matchData.match.innings\n            : Array.isArray(matchData?.innings)\n              ? matchData.innings\n              : [];\n          if (matchInnings.length > 0) {\n            setLiveInningsHistory(\n              matchInnings.map((item: { inningsNumber: number; totalRuns: number; wickets: number; battingTeamId: string; target?: number | null }) => ({\n                inningsNumber: Number(item.inningsNumber),\n                totalRuns: Number(item.totalRuns ?? 0),\n                wickets: Number(item.wickets ?? 0),\n                battingTeamId: item.battingTeamId,\n                target: item.target ?? null,\n              })),\n            );\n          }\n        } catch (historyError) {\n          console.error("Failed to refresh innings history:", historyError);\n        }\n      }\n\n      setLiveBattingTeamId(innings.battingTeamId ?? "");'
+            ),
+            (
+              '      void refreshLiveInnings(data.id);\n    } catch (err) {',
+              '      void refreshLiveInnings(data.id, createdMatchId);\n    } catch (err) {'
+            ),
+            (
+              '      void refreshLiveInnings(data.id);\n    } catch (err) {\n      console.error(err);',
+              '      void refreshLiveInnings(data.id, createdMatchId);\n    } catch (err) {\n      console.error(err);'
+            ),
+            (
+              '      await refreshLiveInnings(currentInnings.id);',
+              '      await refreshLiveInnings(currentInnings.id, match.id);'
+            ),
+            (
+              '      await refreshLiveInnings(liveInningsId);',
+              '      await refreshLiveInnings(liveInningsId, createdMatchId);'
+            ),
+            (
+              'history?.battingTeamId === teamAId ? `${history.totalRuns}/-` : "- / -"',
+              'history?.battingTeamId === teamAId ? `${history.totalRuns}/${history.wickets}` : "-/-"'
+            ),
+            (
+              'history?.battingTeamId === teamBId ? `${history.totalRuns}/-` : "- / -"',
+              'history?.battingTeamId === teamBId ? `${history.totalRuns}/${history.wickets}` : "-/-"'
+            ),
+          ]
+
+          for old, new in replacements:
+            if old not in s:
+              raise SystemExit(f"Expected text not found: {old[:120]!r}")
+            s = s.replace(old, new, 1)
+
+          p.write_text(s)
+
+      - name: Validate source changes
+        run: |
+          grep -n "wickets: Number(item.wickets" src/app/page.tsx
+          grep -n 'history.totalRuns.*history.wickets' src/app/page.tsx
+          grep -n 'refreshLiveInnings(.*createdMatchId' src/app/page.tsx
+
+      - name: Commit fix
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add src/app/page.tsx
+          git diff --cached --quiet || git commit -m "fix: update live innings score summary"
+          git push origin fix/top-innings-score
+
+      - name: Remove patch workflow
+        if: success()
+        run: |
+          git rm .github/workflows/patch-live-innings-score.yml
+          git commit -m "chore: remove temporary live innings patch workflow"
+          git push origin fix/top-innings-score
