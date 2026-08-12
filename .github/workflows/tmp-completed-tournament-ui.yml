@@ -64,10 +64,10 @@ jobs:
               if start < 0:
                   raise SystemExit('Existing Tournaments section not found')
               tail = text[start:]
-              pattern = re.compile(r'(?P<metadata>\s*<p className="mt-1 text-xs text-slate-500">\s*\{tournament\.season.*?</p>)', re.S)
+              pattern = re.compile(r'(?P<metadata>\{\s*formatLabels\[\s*tournament\.format\s*\]\s*\}\s*</p>)', re.S)
               match = pattern.search(tail)
               if not match:
-                  raise SystemExit('Tournament metadata paragraph not found')
+                  raise SystemExit('Tournament format metadata not found')
               metadata = match.group('metadata')
               addition = metadata + '''
 
