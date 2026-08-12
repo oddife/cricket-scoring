@@ -746,6 +746,36 @@ const [resumingMatchId, setResumingMatchId] =
   // Team players
   // ---------------------------------------------------------
 
+  async function loadAvailablePlayers() {
+    try {
+      setLoadingAvailablePlayers(true);
+      setError("");
+
+      const response = await fetch("/api/players", {
+        cache: "no-store",
+      });
+      const data = await response.json();
+
+      if (!response.ok) {
+        throw new Error(
+          data?.error || "Failed to load existing players.",
+        );
+      }
+
+      setAvailablePlayers(Array.isArray(data) ? data : []);
+    } catch (err) {
+      console.error(err);
+      setAvailablePlayers([]);
+      setError(
+        err instanceof Error
+          ? err.message
+          : "Failed to load existing players.",
+      );
+    } finally {
+      setLoadingAvailablePlayers(false);
+    }
+  }
+
   async function loadTeamPlayers(teamId: string) {
     try {
       setLoadingTeamPlayers(true);
@@ -799,7 +829,7 @@ const [resumingMatchId, setResumingMatchId] =
     resetPlayerForm();
     setError("");
     setShowAddPlayer(true);
-    void loadGlobalTeams();
+    void loadAvailablePlayers();
   }
 
   async function addExistingPlayerToTeam() {
@@ -4076,13 +4106,9 @@ late-800 disabled:opacity-50 [color-scheme:dark]"
       teamPlayers.map((membership) => membership.player.id),
     );
 
-    const availableExistingPlayers = Array.from(
-      new Map(
-        globalTeams
-          .flatMap((team) => team.players ?? [])
-          .map((player) => [player.id, player]),
-      ).values(),
-    ).filter((player) => !currentTeamPlayerIds.has(player.id));
+    const availableExistingPlayers = availablePlayers.filter(
+      (player) => !currentTeamPlayerIds.has(player.id),
+    );
 
     if (!showAddPlayer || !selectedTeam) return null;
 
@@ -4099,7 +4125,6 @@ late-800 disabled:opacity-50 [color-scheme:dark]"
       <div className="fixed inset-0 z-[80] flex items-center justify-center bg-black/70 p-5 backdrop-blur-sm">
         <div className="w-full max-w-lg rounded-3xl border border-slate-700 bg-slate-900 p-6 shadow-2xl sm:p-8 [color-scheme:dark]">
           <div className="mb-6">
-            <div className="mb-4 flex h-12 w-12 items-center justify-center rounded-2xl bg-emerald-500/10 text-2xl">PLAYER</div>
             <h2 className="text-xl font-semibold">{editingPlayerId ? "Edit Player" : "Add Player"}</h2>
             <p className="mt-2 text-sm text-slate-400">
               {editingPlayerId ? "Update player details for " : "Add a player to "}
@@ -4109,7 +4134,7 @@ late-800 disabled:opacity-50 [color-scheme:dark]"
 
           {!editingPlayerId && (
             <div className="mb-5 grid grid-cols-2 rounded-xl border border-slate-700 bg-slate-950 p-1">
-              <button type="button" onClick={() => { setAddPlayerMode("EXISTING"); setSelectedExistingPlayerId(""); setError(""); void loadGlobalTeams(); }} className={`rounded-lg px-3 py-2 text-sm font-medium ${addPlayerMode === "EXISTING" ? "bg-emerald-500 text-slate-950" : "text-slate-400"}`}>Existing Player</button>
+              <button type="button" onClick={() => { setAddPlayerMode("EXISTING"); setSelectedExistingPlayerId(""); setError(""); void loadAvailablePlayers(); }} className={`rounded-lg px-3 py-2 text-sm font-medium ${addPlayerMode === "EXISTING" ? "bg-emerald-500 text-slate-950" : "text-slate-400"}`}>Existing Player</button>
               <button type="button" onClick={() => { setAddPlayerMode("NEW"); setSelectedExistingPlayerId(""); resetPlayerForm(); setError(""); }} className={`rounded-lg px-3 py-2 text-sm font-medium ${addPlayerMode === "NEW" ? "bg-emerald-500 text-slate-950" : "text-slate-400"}`}>Create New</button>
             </div>
           )}
@@ -4117,8 +4142,8 @@ late-800 disabled:opacity-50 [color-scheme:dark]"
           {!editingPlayerId && addPlayerMode === "EXISTING" ? (
             <div>
               <label htmlFor="existingPlayer" className="mb-2 block text-sm font-medium text-slate-300">Select Existing Player</label>
-              <select id="existingPlayer" autoFocus value={selectedExistingPlayerId} onChange={(event) => setSelectedExistingPlayerId(event.target.value)} disabled={loadingGlobalTeams || availableExistingPlayers.length === 0} className="h-12 w-full rounded-xl border border-slate-700 bg-slate-950 px-4 text-white [color-scheme:dark]">
-                <option value="">{loadingGlobalTeams ? "Loading players..." : availableExistingPlayers.length === 0 ? "No existing players available" : "Select a player"}</option>
+              <select id="existingPlayer" autoFocus value={selectedExistingPlayerId} onChange={(event) => setSelectedExistingPlayerId(event.target.value)} disabled={loadingAvailablePlayers || availableExistingPlayers.length === 0} className="h-12 w-full rounded-xl border border-slate-700 bg-slate-950 px-4 text-white [color-scheme:dark]">
+                <option value="">{loadingAvailablePlayers ? "Loading players..." : availableExistingPlayers.length === 0 ? "No existing players available" : "Select a player"}</option>
                 {availableExistingPlayers.map((player) => (
                   <option key={player.id} value={player.id}>
                     {player.jerseyNumber != null ? `#${player.jerseyNumber} ` : ""}{player.name}
