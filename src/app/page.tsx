@@ -6000,10 +6000,10 @@ r-emerald-500 [color-scheme:dark]"
                 const fielder = wicket.fielderId ? playerName(wicket.fielderId) : "";
                 switch (wicket.type) {
                   case "BOWLED": return `b ${bowler}`;
-                  case "CAUGHT": return fielder ? `c ${fielder} b ${bowler}` : `c b ${bowler}`;
+                  case "CAUGHT": return fielder ? `c ${fielder}\u00a0\u00a0\u00a0b ${bowler}` : `c b ${bowler}`;
                   case "LBW": return `lbw b ${bowler}`;
                   case "RUN_OUT": return fielder ? `run out (${fielder})` : "run out";
-                  case "STUMPED": return fielder ? `st ${fielder} b ${bowler}` : `st b ${bowler}`;
+                  case "STUMPED": return fielder ? `st ${fielder}\u00a0\u00a0\u00a0b ${bowler}` : `st b ${bowler}`;
                   case "HIT_WICKET": return `hit wicket b ${bowler}`;
                   case "RETIRED_OUT": return "retired out";
                   case "RETIRED_HURT": return "retired hurt";
@@ -6100,7 +6100,7 @@ r-emerald-500 [color-scheme:dark]"
                         <section key={i.id} className="rounded-xl border border-slate-200 bg-white p-3 sm:p-4">
                           <div className="flex items-center justify-between border-b border-slate-200 pb-2"><div><p className="text-[10px] font-bold uppercase tracking-wide text-slate-400">Innings {i.inningsNumber}</p><h3 className="font-black">{teamName(i.battingTeamId)}</h3></div><b className="text-xl">{i.totalRuns}/{i.wickets}</b></div>
                           <div className="mt-3 grid gap-4 lg:grid-cols-2">
-                            <div><div className="mb-1 grid grid-cols-[1fr_40px_40px_35px_35px_50px] text-[10px] font-bold uppercase text-slate-400"><span>Batter</span><span>R</span><span>B</span><span>4s</span><span>6s</span><span>SR</span></div>{Array.from(bat).map(([id, v]) => <div key={id} className="grid grid-cols-[1fr_40px_40px_35px_35px_50px] items-center py-1.5 text-xs"><div><b>{playerName(id)}{!v.out ? " *" : ""}</b><p className="text-[9px] uppercase text-slate-400">{v.out ? v.d : "not out"}</p></div><b>{v.r}</b><span>{v.b}</span><span>{v.f}</span><span>{v.s}</span><span>{v.b ? (v.r / v.b * 100).toFixed(2) : "0.00"}</span></div>)}</div>
+                            <div><div className="mb-1 grid grid-cols-[1fr_40px_40px_35px_35px_50px] text-[10px] font-bold uppercase text-slate-400"><span>Batter</span><span>R</span><span>B</span><span>4s</span><span>6s</span><span>SR</span></div>{Array.from(bat).map(([id, v]) => <div key={id} className="grid grid-cols-[1fr_40px_40px_35px_35px_50px] items-center py-1.5 text-xs"><div><b>{playerName(id)}{!v.out ? " *" : ""}</b><p className="whitespace-pre text-[9px] text-slate-400">{v.out ? v.d : "NOT OUT"}</p></div><b>{v.r}</b><span>{v.b}</span><span>{v.f}</span><span>{v.s}</span><span>{v.b ? (v.r / v.b * 100).toFixed(2) : "0.00"}</span></div>)}</div>
                             <div><div className="mb-1 grid grid-cols-[1fr_40px_40px_40px_50px] text-[10px] font-bold uppercase text-slate-400"><span>Bowler</span><span>O</span><span>R</span><span>W</span><span>ECON</span></div>{Array.from(bowl).map(([id, v]) => <div key={id} className="grid grid-cols-[1fr_40px_40px_40px_50px] items-center py-1.5 text-xs"><b>{playerName(id)}</b><span>{Math.floor(v.b / 6)}.{v.b % 6}</span><span>{v.r}</span><span>{v.w}</span><span>{v.b ? (v.r / v.b * 6).toFixed(2) : "0.00"}</span></div>)}</div>
                           </div>
                           {fall.length > 0 && <div className="mt-3 border-t border-slate-200 pt-2"><p className="text-[10px] font-bold uppercase text-slate-400">Fall of Wickets</p><div className="mt-1 flex flex-wrap gap-1.5">{fall.map((f, n) => <span key={n} className="rounded-md bg-slate-100 px-2 py-1 text-[10px]"><b>{n + 1}-{f.score}</b> {f.p} ({f.over})</span>)}</div></div>}
