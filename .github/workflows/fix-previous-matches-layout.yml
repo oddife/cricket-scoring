@@ -26,25 +26,21 @@ jobs:
           p = Path('src/app/page.tsx')
           lines = p.read_text(encoding='utf-8').splitlines(keepends=True)
 
-          # Winner: use the winner stored on the completed match instead of
-          # trying to infer it from innings totals.
           winner_start = next(i for i, line in enumerate(lines) if 'const winnerId =' in line)
           winner_name = next(i for i in range(winner_start, len(lines)) if 'const winnerName =' in lines[i])
           winner_end = next(i for i in range(winner_name, len(lines)) if ': null;' in lines[i])
           indent = lines[winner_start][:len(lines[winner_start]) - len(lines[winner_start].lstrip())]
           new_winner = [
-              f'{indent}const winnerName =\\n',
-              f'{indent}  match.winnerId === match.teamA.id\\n',
-              f'{indent}    ? match.teamA.name\\n',
-              f'{indent}    : match.winnerId === match.teamB.id\\n',
-              f'{indent}      ? match.teamB.name\\n',
-              f'{indent}      : null;\\n',
-              '\\n',
+              f'{indent}const winnerName =\n',
+              f'{indent}  match.winnerId === match.teamA.id\n',
+              f'{indent}    ? match.teamA.name\n',
+              f'{indent}    : match.winnerId === match.teamB.id\n',
+              f'{indent}      ? match.teamB.name\n',
+              f'{indent}      : null;\n',
+              '\n',
           ]
           lines[winner_start:winner_end + 1] = new_winner
 
-          # Header: title + date + Expand/Collapse only. Scores belong in the
-          # expanded body below the header.
           button_start = next(i for i, line in enumerate(lines) if 'aria-expanded={expanded}' in line)
           while button_start >= 0 and '<button' not in lines[button_start]:
               button_start -= 1
@@ -52,24 +48,24 @@ jobs:
           indent = lines[button_start][:len(lines[button_start]) - len(lines[button_start].lstrip())]
           inner = indent + '  '
           new_header = [
-              f'{indent}<button\\n',
-              f'{inner}type="button"\\n',
-              f'{inner}onClick={() => setExpandedMatchId(expanded ? null : match.id)}\\n',
-              f'{inner}className="w-full text-left"\\n',
-              f'{inner}aria-expanded={{expanded}}\\n',
-              f'{indent}>\\n',
-              f'{inner}<div className="flex min-w-0 items-center justify-between gap-3">\\n',
-              f'{inner}  <p className="truncate text-base font-bold text-slate-100">\\n',
-              f'{inner}    {{match.teamA.name}} <span className="text-slate-600">vs</span> {{match.teamB.name}}\\n',
-              f'{inner}  </p>\\n',
-              f'{inner}  <div className="flex shrink-0 items-center gap-3">\\n',
-              f'{inner}    <span className="whitespace-nowrap text-xs font-medium text-slate-500">\\n',
-              f'{inner}      {{new Date(match.createdAt).toLocaleDateString("en-IN", {{ day: "2-digit", month: "short", year: "numeric" }})}}\\n',
-              f'{inner}    </span>\\n',
-              f'{inner}    <span className="text-xs text-slate-500">{{expanded ? "Collapse" : "Expand"}}</span>\\n',
-              f'{inner}  </div>\\n',
-              f'{inner}</div>\\n',
-              f'{indent}</button>\\n',
+              f'{indent}<button\n',
+              f'{inner}type="button"\n',
+              f'{inner}onClick={() => setExpandedMatchId(expanded ? null : match.id)}\n',
+              f'{inner}className="w-full text-left"\n',
+              f'{inner}aria-expanded={{expanded}}\n',
+              f'{indent}>\n',
+              f'{inner}<div className="flex min-w-0 items-center justify-between gap-3">\n',
+              f'{inner}  <p className="truncate text-base font-bold text-slate-100">\n',
+              f'{inner}    {{match.teamA.name}} <span className="text-slate-600">vs</span> {{match.teamB.name}}\n',
+              f'{inner}  </p>\n',
+              f'{inner}  <div className="flex shrink-0 items-center gap-3">\n',
+              f'{inner}    <span className="whitespace-nowrap text-xs font-medium text-slate-500">\n',
+              f'{inner}      {{new Date(match.createdAt).toLocaleDateString("en-IN", {{ day: "2-digit", month: "short", year: "numeric" }})}}\n',
+              f'{inner}    </span>\n',
+              f'{inner}    <span className="text-xs text-slate-500">{{expanded ? "Collapse" : "Expand"}}</span>\n',
+              f'{inner}  </div>\n',
+              f'{inner}</div>\n',
+              f'{indent}</button>\n',
           ]
           lines[button_start:button_end + 1] = new_header
 
