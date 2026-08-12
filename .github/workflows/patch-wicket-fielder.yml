@@ -15,61 +15,8 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Patch wicket fielder flow
-        run: |
-          python3 - <<'PY'
-          from pathlib import Path
-          p = Path('src/app/page.tsx')
-          s = p.read_text()
-
-          s = s.replace(
-              '  const [wicketType, setWicketType] =\n    useState("BOWLED");',
-              '  const [wicketType, setWicketType] =\n    useState("BOWLED");\n  const [wicketFielderId, setWicketFielderId] = useState("");'
-          )
-
-          s = s.replace(
-              '    setReplacementPlayerId("");\n    setWicketType(extraType ? "RUN_OUT" : "BOWLED");',
-              '    setReplacementPlayerId("");\n    setWicketFielderId("");\n    setWicketType(extraType ? "RUN_OUT" : "BOWLED");'
-          )
-
-          s = s.replace(
-              '    const nextBatsmen = liveBattingPlayers.filter(\n      (player) =>\n        !activeBatters.has(player.id) &&\n        !dismissedIds.has(player.id),\n    );',
-              '    const nextBatsmen = liveBattingPlayers.filter(\n      (player) =>\n        !activeBatters.has(player.id) &&\n        !dismissedIds.has(player.id),\n    );\n\n    const wicketFielders = liveBowlingPlayers.filter((player) =>\n      wicketType === "STUMPED"\n        ? player.id === wicketKeeperA || player.id === wicketKeeperB\n        : true,\n    );\n\n    const wicketRequiresFielder =\n      wicketType === "CAUGHT" ||\n      wicketType === "RUN_OUT" ||\n      wicketType === "STUMPED";'
-          )
-
-          old = '''                {wicketType === "RUN_OUT" && (\n                  <div>\n                    <p className="mb-2 block text-sm font-semibold">Who was run out?</p>\n                    <div className="grid grid-cols-2 gap-2">\n                      <button type="button" onClick={() => { setRunOutDismissedEnd("STRIKER"); setDismissedPlayerId(liveStrikerId); setReplacementPlayerId(""); }} className={`rounded-lg border px-3 py-3 text-left transition ${runOutDismissedEnd === "STRIKER" ? "border-red-500 bg-red-500/10 text-red-300" : "border-slate-700 bg-slate-950 text-slate-300"}`}>\n                        <span className="block text-xs uppercase tracking-wide text-slate-500">Striker</span>\n                        <span className="mt-1 block font-bold">{liveStriker?.name ?? "Striker"}</span>\n                      </button>\n                      <button type="button" onClick={() => { setRunOutDismissedEnd("NON_STRIKER"); setDismissedPlayerId(liveNonStrikerId); setReplacementPlayerId(""); }} className={`rounded-lg border px-3 py-3 text-left transition ${runOutDismissedEnd === "NON_STRIKER" ? "border-red-500 bg-red-500/10 text-red-300" : "border-slate-700 bg-slate-950 text-slate-300"}`}>\n                        <span className="block text-xs uppercase tracking-wide text-slate-500">Non-striker</span>\n                        <span className="mt-1 block font-bold">{liveNonStriker?.name ?? "Non-striker"}</span>\n                      </button>\n                    </div>\n                  </div>\n                )}'''
-          new = old + '''\n                {wicketRequiresFielder && (\n                  <div>\n                    <label htmlFor="wicketFielder" className="mb-2 block text-sm font-semibold">\n                      {wicketType === "CAUGHT" ? "Caught by" : wicketType === "STUMPED" ? "Wicketkeeper" : "Run out by"}\n                    </label>\n                    <select id="wicketFielder" value={wicketFielderId} onChange={(event) => setWicketFielderId(event.target.value)} className="h-12 w-full rounded-lg border border-slate-700 bg-slate-950 px-3 text-white [color-scheme:dark]">\n                      <option value="">Select {wicketType === "CAUGHT" ? "catcher" : wicketType === "STUMPED" ? "wicketkeeper" : "fielder"}</option>\n                      {wicketFielders.map((player) => (\n                        <option key={player.id} value={player.id}>{player.name}</option>\n                      ))}\n                    </select>\n                  </div>\n                )}'''
-          if old not in s:
-              raise SystemExit('Run-out block not found')
-          s = s.replace(old, new, 1)
-
-          s = s.replace(
-              'const value = event.target.value; setWicketType(value); if (value !== "RUN_OUT") { setRunOutDismissedEnd("STRIKER"); setDismissedPlayerId(liveStrikerId); } else { setRunOutDismissedEnd("STRIKER"); setDismissedPlayerId(liveStrikerId); } setReplacementPlayerId("");',
-              'const value = event.target.value; setWicketType(value); setRunOutDismissedEnd("STRIKER"); setDismissedPlayerId(liveStrikerId); setReplacementPlayerId(""); setWicketFielderId("");'
-          )
-
-          s = s.replace(
-              'disabled={!replacementPlayerId || liveLoading} onClick={() => void recordLiveDelivery({ isWicket: true, wicketType, dismissedPlayerId, replacementPlayerId, ...(pendingWicketExtraType ? { runsExtra: pendingWicketExtraRuns, extraType: pendingWicketExtraType } : {}) })}',
-              'disabled={!replacementPlayerId || liveLoading || (wicketRequiresFielder && !wicketFielderId)} onClick={() => void recordLiveDelivery({ isWicket: true, wicketType, dismissedPlayerId, replacementPlayerId, ...(wicketFielderId ? { fielderId: wicketFielderId } : {}), ...(pendingWicketExtraType ? { runsExtra: pendingWicketExtraRuns, extraType: pendingWicketExtraType } : {}) })}'
-          )
-
-          s = s.replace(
-              'setReplacementPlayerId("");\n      setRunOutDismissedEnd("STRIKER");',
-              'setReplacementPlayerId("");\n      setWicketFielderId("");\n      setRunOutDismissedEnd("STRIKER");'
-          )
-
-          s = s.replace(
-              'wicket: { type: string; dismissedPlayerId: string; bowlerId: string | null } | null;',
-              'wicket: { type: string; dismissedPlayerId: string; bowlerId: string | null; fielderId: string | null } | null;'
-          )
-
-          s = s.replace(
-              'if (x.isWicket && x.wicket?.dismissedPlayerId === x.strikerId) { a.out = true; a.d = x.wicket.type.replaceAll("_", " ");',
-              'if (x.isWicket && x.wicket?.dismissedPlayerId === x.strikerId) { a.out = true; const dismissal = x.wicket.type.replaceAll("_", " "); const fielder = x.wicket.fielderId ? playerName(x.wicket.fielderId) : ""; a.d = fielder ? `${dismissal} (${fielder})` : dismissal;'
-          )
-
-          p.write_text(s)
-          PY
+      - name: Apply patch
+        run: python3 scripts/patch_wicket_fielder.py
 
       - name: Verify
         run: |
@@ -78,10 +25,11 @@ jobs:
           npx tsc --noEmit
           npm test -- --run
 
-      - name: Commit patch
+      - name: Commit and clean up
         run: |
           git config user.name 'github-actions[bot]'
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
-          git add src/app/page.tsx .github/workflows/patch-wicket-fielder.yml
+          git add src/app/page.tsx
+          git rm scripts/patch_wicket_fielder.py .github/workflows/patch-wicket-fielder.yml
           git commit -m 'chore: apply wicket fielder UI'
           git push
