@@ -2019,25 +2019,33 @@ const [resumingMatchId, setResumingMatchId] =
         ),
       ];
 
+      const refreshedOverIsOddFinalOver =
+        bowlingMode === "DOUBLE" &&
+        Boolean(innings.match?.oddOvers) &&
+        refreshedOverNumber >= Number(innings.match?.oversPerInnings ?? 0);
+
       const refreshedBowlerAId =
         observedBowlers[0] ??
         innings.currentBowlerAId ??
         "";
-      const refreshedBowlerBId =
-        observedBowlers[1] ??
-        innings.currentBowlerBId ??
-        liveBowlerBId;
+      const refreshedBowlerBId = refreshedOverIsOddFinalOver
+        ? ""
+        : observedBowlers[1] ??
+          innings.currentBowlerBId ??
+          liveBowlerBId;
 
       setLiveBowlerAId(refreshedBowlerAId);
       setLiveBowlerBId(refreshedBowlerBId);
 
       const refreshedCurrentBowlerId =
-        bowlingMode === "DOUBLE" &&
-        refreshedOverDeliveries.length > 0
-          ? refreshedOverDeliveries.length % 2 === 0
-            ? refreshedBowlerAId
-            : refreshedBowlerBId
-          : refreshedBowlerAId;
+        refreshedOverIsOddFinalOver
+          ? refreshedBowlerAId
+          : bowlingMode === "DOUBLE" &&
+              refreshedOverDeliveries.length > 0
+            ? refreshedOverDeliveries.length % 2 === 0
+              ? refreshedBowlerAId
+              : refreshedBowlerBId
+            : refreshedBowlerAId;
 
       setLiveBowlerId(refreshedCurrentBowlerId);
       setLivePreviousBowlerAId(innings.previousOverBowlerAId ?? "");
