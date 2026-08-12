@@ -18,60 +18,58 @@ jobs:
         run: |
           python - <<'PY'
           from pathlib import Path
+          import re
 
           path = Path('src/app/page.tsx')
           text = path.read_text()
 
-          if 'status: "ACTIVE" | "COMPLETED";' in text and 'Winner: {tournament.winner.name}' in text:
-              print('UI fix already applied')
-              raise SystemExit(0)
+          if 'status: "ACTIVE" | "COMPLETED";' not in text:
+              old_type = '''type Tournament = {
+                id: string;
+                name: string;
+                season: string | null;
+                format: string;
+                startDate: string | null;
+                endDate: string | null;
+                teams: TournamentTeam[];
+                _count: {
+                  matches: number;
+                };
+              };'''
+              new_type = '''type Tournament = {
+                id: string;
+                name: string;
+                season: string | null;
+                format: string;
+                startDate: string | null;
+                endDate: string | null;
+                status: "ACTIVE" | "COMPLETED";
+                winner: {
+                  id: string;
+                  name: string;
+                  shortName: string | null;
+                  logo: string | null;
+                } | null;
+                teams: TournamentTeam[];
+                _count: {
+                  matches: number;
+                };
+              };'''
+              if old_type not in text:
+                  raise SystemExit('Tournament type block not found')
+              text = text.replace(old_type, new_type, 1)
 
-          old_type = '''type Tournament = {
-            id: string;
-            name: string;
-            season: string | null;
-            format: string;
-            startDate: string | null;
-            endDate: string | null;
-            teams: TournamentTeam[];
-            _count: {
-              matches: number;
-            };
-          };'''
-          new_type = '''type Tournament = {
-            id: string;
-            name: string;
-            season: string | null;
-            format: string;
-            startDate: string | null;
-            endDate: string | null;
-            status: "ACTIVE" | "COMPLETED";
-            winner: {
-              id: string;
-              name: string;
-              shortName: string | null;
-              logo: string | null;
-            } | null;
-            teams: TournamentTeam[];
-            _count: {
-              matches: number;
-            };
-          };'''
-          if old_type not in text:
-              raise SystemExit('Tournament type block not found')
-          text = text.replace(old_type, new_type, 1)
-
-          marker = '''                        <p className="mt-1 text-xs text-slate-500">
-                          {tournament.season
-                            ? `${tournament.season} ${String.fromCharCode(0x2022)} `
-                            : ""}
-                          {
-                            formatLabels[
-                              tournament.format
-                            ]
-                          }
-                        </p>'''
-          replacement = marker + '''
+          if 'Winner: {tournament.winner.name}' not in text:
+              start = text.find('Existing Tournaments')
+              if start < 0:
+                  raise SystemExit('Existing Tournaments section not found')
+              tail = text[start:]
+              pattern = re.compile(r'(?P<metadata>\s*<p className="mt-1 text-xs text-slate-500">\s*\{tournament\.season.*?</p>)', re.S)
+              match = pattern.search(tail)
+              if not match:
+                  raise SystemExit('Tournament metadata paragraph not found')
+              metadata = match.group('metadata')
+              addition = metadata + '''
 
                         {tournament.status === "COMPLETED" && (
                           <div className="mt-2 flex flex-wrap items-center gap-2">
@@ -85,9 +83,8 @@ jobs:
                             )}
                           </div>
                         )}'''
-          if marker not in text:
-              raise SystemExit('Tournament metadata marker not found')
-          text = text.replace(marker, replacement, 1)
+              tail = tail[:match.start()] + addition + tail[match.end():]
+              text = text[:start] + tail
 
           path.write_text(text)
           PY
