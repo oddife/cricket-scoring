@@ -2637,9 +2637,23 @@ const [resumingMatchId, setResumingMatchId] =
 
     const firstInnings = liveInningsHistory.find((item) => item.inningsNumber === 1);
     const secondInnings = liveInningsHistory.find((item) => item.inningsNumber === 2);
+    const currentTeamPriorRuns =
+      liveBattingTeamId === firstInnings?.battingTeamId
+        ? firstInnings?.totalRuns ?? null
+        : liveBattingTeamId === secondInnings?.battingTeamId
+          ? secondInnings?.totalRuns ?? null
+          : null;
+    const opponentPriorRuns =
+      liveBattingTeamId === firstInnings?.battingTeamId
+        ? secondInnings?.totalRuns ?? null
+        : liveBattingTeamId === secondInnings?.battingTeamId
+          ? firstInnings?.totalRuns ?? null
+          : null;
     const firstInningsLeadOrDeficit =
-      liveInningsNumber >= 2 && firstInnings && secondInnings
-        ? secondInnings.totalRuns - firstInnings.totalRuns
+      liveInningsNumber >= 3 &&
+      currentTeamPriorRuns !== null &&
+      opponentPriorRuns !== null
+        ? currentTeamPriorRuns - opponentPriorRuns
         : null;
 
     const currentOverNumber = completedOvers + 1;
