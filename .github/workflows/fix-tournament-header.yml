@@ -1,0 +1,65 @@
+name: Fix tournament header format
+
+on:
+  push:
+    branches:
+      - feature/custom-delivery-runs
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Apply tournament header change
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+
+          p = Path('src/app/page.tsx')
+          s = p.read_text(encoding='utf-8')
+
+          old = '''            <p className="mt-2 text-sm text-slate-400">
+              {selectedTournament.season
+                ? `${selectedTournament.season} ${String.fromCharCode(0x2022)} `
+                : ""}
+              {
+                formatLabels[
+                  selectedTournament.format
+                ]
+              }
+            </p>'''
+
+          new = '''            <p className="mt-2 text-sm text-slate-400">
+              Season : {selectedTournament.season ?? "-"}
+              {"   "}
+              Format : {formatLabels[selectedTournament.format]}
+            </p>'''
+
+          if s.count(old) != 1:
+              raise SystemExit(f"Expected exactly one tournament header block, found {s.count(old)}")
+
+          p.write_text(s.replace(old, new, 1), encoding='utf-8')
+          print('Tournament header updated exactly once.')
+          PY
+
+      - name: Verify
+        run: |
+          npm ci
+          npx prisma generate
+          npx tsc --noEmit
+          npm test -- --run
+
+      - name: Commit patch and remove workflow
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add src/app/page.tsx
+          git commit -m "fix: clarify tournament season and format"
+          git push origin feature/custom-delivery-runs
+          git rm .github/workflows/fix-tournament-header.yml
+          git commit -m "chore: remove tournament header workflow"
+          git push origin feature/custom-delivery-runs
