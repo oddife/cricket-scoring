@@ -31,6 +31,8 @@ bad = []
 for path in Path('src').rglob('*'):
     if not path.is_file() or path.suffix not in {'.ts', '.tsx', '.css'}:
         continue
+    if path.name.endswith('.backup.tsx') or 'before-bowler-fix' in path.name:
+        continue
     text = path.read_text(encoding='utf-8-sig', errors='replace')
     for marker in ('â', 'Â', 'Ã'):
         if marker in text:
@@ -38,6 +40,6 @@ for path in Path('src').rglob('*'):
 
 if bad:
     print('\n'.join(bad))
-    raise SystemExit('encoding artifacts remain under src/')
+    raise SystemExit('encoding artifacts remain in active source files')
 
-print('no common encoding artifacts remain under src/')
+print('no common encoding artifacts remain in active source files')
