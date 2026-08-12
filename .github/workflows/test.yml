@@ -5,10 +5,11 @@ on:
     branches:
       - main
       - fix/league-live-scorecard
+      - fix/team-player-roster-removal
   pull_request:
 
 permissions:
-  contents: read
+  contents: write
 
 jobs:
   test:
@@ -38,3 +39,195 @@ jobs:
 
       - name: Production build
         run: npm run build
+
+  apply-roster-ui:
+    if: github.ref == 'refs/heads/fix/team-player-roster-removal'
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Patch roster UI
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+
+          p = Path("src/app/page.tsx")
+          s = p.read_text()
+
+          marker = '''  // ---------------------------------------------------------
+  // Live match resume
+  // ---------------------------------------------------------
+'''
+
+          handlers = '''  async function removePlayerFromCurrentRoster(playerId: string, playerName: string) {
+    if (!selectedTeamId) return;
+    if (!window.confirm(`Remove "${playerName}" from this team's current roster?\\n\\nThe global player and historical match data will remain.`)) return;
+    try {
+      setError("");
+      const response = await fetch(`/api/teams/${selectedTeamId}/players`, {
+        method: "DELETE",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ playerId }),
+      });
+      const data = await response.json();
+      if (!response.ok) throw new Error(data?.error || "Failed to remove player from roster.");
+      await loadTeamPlayers(selectedTeamId);
+      if (selectedTournament) await refreshSelectedTournament(selectedTournament.id);
+    } catch (err) {
+      console.error(err);
+      setError(err instanceof Error ? err.message : "Failed to remove player from roster.");
+    }
+  }
+
+  async function removeTeamFromCurrentTournament(teamId: string, teamName: string) {
+    if (!selectedTournament) return;
+    if (!window.confirm(`Remove "${teamName}" from ${selectedTournament.name}?\\n\\nThe global team, players and historical match data will remain.`)) return;
+    try {
+      setError("");
+      const response = await fetch(`/api/tournaments/${selectedTournament.id}/teams`, {
+        method: "DELETE",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ teamId }),
+      });
+      const data = await response.json();
+      if (!response.ok) throw new Error(data?.error || "Failed to remove team from tournament.");
+      if (selectedTeamId === teamId) {
+        setSelectedTeamId(null);
+        setTeamPlayers([]);
+      }
+      await refreshSelectedTournament(selectedTournament.id);
+    } catch (err) {
+      console.error(err);
+      setError(err instanceof Error ? err.message : "Failed to remove team from tournament.");
+    }
+  }
+
+'''
+          if "async function removePlayerFromCurrentRoster" not in s:
+              if marker not in s: raise SystemExit("live match marker not found")
+              s = s.replace(marker, handlers + marker, 1)
+
+          old_team = '''                      <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-slate-800 text-lg">
+                        {String.fromCodePoint(0x1F3CF)}
+                      </div>'''
+          new_team = '''                      <div className="flex shrink-0 items-center gap-2">
+                        <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-slate-800 text-lg">
+                          {String.fromCodePoint(0x1F3CF)}
+                        </div>
+                        <button
+                          type="button"
+                          title="Remove team from this tournament"
+                          aria-label={`Remove ${tournamentTeam.team.name} from this tournament`}
+                          onClick={(event) => {
+                            event.stopPropagation();
+                            void removeTeamFromCurrentTournament(tournamentTeam.team.id, tournamentTeam.team.name);
+                          }}
+                          className="flex h-9 w-9 items-center justify-center rounded-xl border border-red-500/30 bg-red-500/10 text-lg font-bold text-red-400 transition hover:bg-red-500/20"
+                        >
+                          −
+                        </button>
+                      </div>'''
+          if old_team in s: s = s.replace(old_team, new_team, 1)
+
+          old_player = '''                      <div className="flex shrink-0 items-center gap-2">
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setEditingPlayerId(
+                              membership.player.id,
+                            );
+                            setPlayerName(
+                              membership.player.name,
+                            );
+                            setPlayerJerseyNumber(
+                              membership.player.jerseyNumber !== null
+                                ? String(
+                                    membership.player.jerseyNumber,
+                                  )
+                                : "",
+                            );
+                            setPlayerBattingStyle(
+                              membership.player.battingStyle || "",
+                            );
+                            setPlayerBowlingStyle(
+                              membership.player.bowlingStyle || "",
+                            );
+                            setError("");
+                            setShowAddPlayer(true);
+                          }}
+                          className="flex h-10 items-center gap-2 rounded-xl border border-slate-700 bg-slate-800 px-3 text-sm font-medium text-slate-300 transition hover:border-emerald-500/50 hover:bg-emerald-500/10 hover:text-emerald-400 [color-scheme:dark]"
+                        >
+                          <span>EDIT</span>
+                          <span className="hidden sm:inline">
+                            Edit
+                          </span>
+                        </button>
+
+                        <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-slate-800 text-lg">
+                          PLAYER
+                        </div>
+                      </div>'''
+          new_player = '''                      <div className="flex shrink-0 items-center gap-2">
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setEditingPlayerId(
+                              membership.player.id,
+                            );
+                            setPlayerName(
+                              membership.player.name,
+                            );
+                            setPlayerJerseyNumber(
+                              membership.player.jerseyNumber !== null
+                                ? String(
+                                    membership.player.jerseyNumber,
+                                  )
+                                : "",
+                            );
+                            setPlayerBattingStyle(
+                              membership.player.battingStyle || "",
+                            );
+                            setPlayerBowlingStyle(
+                              membership.player.bowlingStyle || "",
+                            );
+                            setError("");
+                            setShowAddPlayer(true);
+                          }}
+                          className="flex h-10 items-center gap-2 rounded-xl border border-slate-700 bg-slate-800 px-3 text-sm font-medium text-slate-300 transition hover:border-emerald-500/50 hover:bg-emerald-500/10 hover:text-emerald-400 [color-scheme:dark]"
+                        >
+                          <span>EDIT</span>
+                          <span className="hidden sm:inline">
+                            Edit
+                          </span>
+                        </button>
+
+                        <button
+                          type="button"
+                          title="Remove player from current roster"
+                          aria-label={`Remove ${membership.player.name} from current roster`}
+                          onClick={() => void removePlayerFromCurrentRoster(membership.player.id, membership.player.name)}
+                          className="flex h-10 w-10 items-center justify-center rounded-xl border border-red-500/30 bg-red-500/10 text-xl font-bold text-red-400 transition hover:bg-red-500/20"
+                        >
+                          −
+                        </button>
+                      </div>'''
+          if old_player in s: s = s.replace(old_player, new_player, 1)
+
+          p.write_text(s)
+          PY
+
+      - name: Commit roster UI
+        shell: bash
+        run: |
+          if git diff --quiet; then
+            echo "No UI changes needed."
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add src/app/page.tsx
+          git commit -m "feat: simplify team and player roster removal"
+          git push
