@@ -327,4 +327,4 @@ export async function DELETE(request: Request) {
   }
 }
 
-// Completed-tournament UI workflow trigger.
+// UI patch trigger 2.
