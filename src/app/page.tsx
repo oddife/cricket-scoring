@@ -4759,21 +4759,13 @@ hover:bg-emerald-500/10 [color-scheme:dark]"
               const teamName = (teamId: string) =>
                 teamId === match.teamA.id ? match.teamA.name : match.teamB.name;
 
-              const winnerId =
-                firstInnings && lastInnings && innings.length === 2
-                  ? firstInnings.totalRuns > lastInnings.totalRuns
-                    ? firstInnings.battingTeamId
-                    : firstInnings.totalRuns < lastInnings.totalRuns
-                      ? lastInnings.battingTeamId
-                      : null
-                  : null;
-
               const winnerName =
-                winnerId === match.teamA.id
+                match.winnerId === match.teamA.id
                   ? match.teamA.name
-                  : winnerId === match.teamB.id
+                  : match.winnerId === match.teamB.id
                     ? match.teamB.name
                     : null;
+
 
               return (
                 <div
@@ -4786,27 +4778,14 @@ hover:bg-emerald-500/10 [color-scheme:dark]"
                     className="w-full text-left"
                     aria-expanded={expanded}
                   >
-                    <div className="grid min-w-0 gap-1.5 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-center">
-                      <div className="flex min-w-0 items-center justify-between gap-3">
-                        <p className="truncate text-base font-bold text-slate-100">
-                          {match.teamA.name} <span className="text-slate-600">vs</span> {match.teamB.name}
-                        </p>
+                    <div className="flex min-w-0 items-center justify-between gap-3">
+                      <p className="truncate text-base font-bold text-slate-100">
+                        {match.teamA.name} <span className="text-slate-600">vs</span> {match.teamB.name}
+                      </p>
+                      <div className="flex shrink-0 items-center gap-3">
                         <span className="whitespace-nowrap text-xs font-medium text-slate-500">
                           {new Date(match.createdAt).toLocaleDateString("en-IN", { day: "2-digit", month: "short", year: "numeric" })}
                         </span>
-                      </div>
-
-                      <div className="flex min-w-0 flex-wrap items-center gap-x-4 gap-y-1 text-sm">
-                        {firstInnings && (
-                          <span className="truncate text-slate-300">
-                            <b className="text-slate-100">{teamName(firstInnings.battingTeamId)}</b> {formatScore(firstInnings)}
-                          </span>
-                        )}
-                        {lastInnings && lastInnings.id !== firstInnings?.id && (
-                          <span className="truncate text-slate-300">
-                            <b className="text-slate-100">{teamName(lastInnings.battingTeamId)}</b> {formatScore(lastInnings)}
-                          </span>
-                        )}
                         <span className="text-xs text-slate-500">{expanded ? "Collapse" : "Expand"}</span>
                       </div>
                     </div>
