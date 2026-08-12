@@ -22,8 +22,22 @@ export async function PUT(request: Request, { params }: RouteContext) {
 
     const body = await request.json();
     const playerId = typeof body.playerId === "string" ? body.playerId : "";
-    const membership = await prisma.tournamentTeamPlayer.findFirst({ where: { playerId, tournamentTeam: { tournamentId: id } } });
-    if (!membership) return NextResponse.json({ error: "Player did not participate in this tournament." }, { status: 400 });
+
+    // MatchPlayer is the authoritative record of who actually participated
+    // in tournament matches. TournamentTeamPlayer may be empty when players
+    // were selected directly for a match, so validating only that membership
+    // incorrectly rejects legitimate Man of the Series candidates.
+    const participation = await prisma.matchPlayer.findFirst({
+      where: {
+        playerId,
+        match: {
+          tournamentId: id,
+          status: "COMPLETED",
+        },
+      },
+      select: { id: true },
+    });
+    if (!participation) return NextResponse.json({ error: "Player did not participate in this tournament." }, { status: 400 });
 
     const shortlist = await getTournamentAwardShortlist(id);
     const suggestedIds = shortlist.candidates.map((candidate) => candidate.player.id);
