@@ -50,6 +50,7 @@ jobs:
       - name: Validate
         run: |
           npm ci
+          npx prisma generate
           npx tsc --noEmit
 
       - name: Commit patch and remove temporary workflow
