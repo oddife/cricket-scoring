@@ -81,8 +81,6 @@ jobs:
               'cancel wicket reset',
           )
 
-          # The completed-match scorecard patch may already have added fielderId.
-          # Only apply that type change if the old type is still present.
           old_type = 'wicket: { type: string; dismissedPlayerId: string; bowlerId: string | null } | null;'
           new_type = 'wicket: { type: string; dismissedPlayerId: string; bowlerId: string | null; fielderId: string | null } | null;'
           if old_type in text:
@@ -92,14 +90,6 @@ jobs:
           new_detail = 'a.out = true; a.d = `${x.wicket.type.replaceAll("_", " ")}${x.wicket.fielderId ? ` - ${playerName(x.wicket.fielderId)}` : ""}`; fall.push'
           if old_detail in text:
               text = text.replace(old_detail, new_detail, 1)
-
-          # Live delivery data needs the fielder id as well so the live scorecard
-          # can render the same dismissal notation as the completed scorecard.
-          replace_once(
-              '    wicket: { type: string; dismissedPlayerId: string; bowlerId: string | null } | null;\n  };',
-              '    wicket: { type: string; dismissedPlayerId: string; bowlerId: string | null; fielderId: string | null } | null;\n  };',
-              'live delivery wicket type',
-          )
 
           delivery_label = '''    const deliveryLabel = (delivery: LiveDeliveryView) => {\n      if (delivery.isWicket) return "W";\n      if (delivery.extraType === "WIDE") return `Wd${delivery.runsExtra || 1}`;\n      if (delivery.extraType === "NO_BALL") return `Nb${delivery.runsExtra || 1}`;\n      if (delivery.extraType === "BYE") return `B${delivery.runsExtra || 1}`;\n      if (delivery.extraType === "LEG_BYE") return `Lb${delivery.runsExtra || 1}`;\n      return String(delivery.runsTotal);\n    };'''
           dismissal_helper = delivery_label + '''\n\n    const liveDismissalText = (delivery: LiveDeliveryView) => {\n      if (!delivery.wicket) return "";\n      const bowler = delivery.wicket.bowlerId\n        ? liveBowlingPlayers.find((player) => player.id === delivery.wicket!.bowlerId)?.name ?? "Bowler"\n        : "Bowler";\n      const fielder = delivery.wicket.fielderId\n        ? liveBowlingPlayers.find((player) => player.id === delivery.wicket!.fielderId)?.name ?? ""\n        : "";\n      switch (delivery.wicket.type) {\n        case "BOWLED": return `b ${bowler}`;\n        case "CAUGHT": return fielder ? `c ${fielder}   b ${bowler}` : `c b ${bowler}`;\n        case "LBW": return `lbw b ${bowler}`;\n        case "RUN_OUT": return fielder ? `run out (${fielder})` : "run out";\n        case "STUMPED": return fielder ? `st ${fielder}   b ${bowler}` : `st b ${bowler}`;\n        case "HIT_WICKET": return `hit wicket b ${bowler}`;\n        case "RETIRED_OUT": return "retired out";\n        case "RETIRED_HURT": return "retired hurt";\n        case "OVER_FENCE": return "over fence";\n        default: return "out";\n      }\n    };'''
