@@ -1,0 +1,38 @@
+name: Verify innings lead fix
+
+on:
+  push:
+    branches:
+      - feature/custom-delivery-runs
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    if: github.actor == 'oddife'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: feature/custom-delivery-runs
+          fetch-depth: 0
+
+      - name: Apply innings lead fix
+        run: python scripts/fix-innings-lead.py
+
+      - name: Verify
+        run: |
+          npm ci
+          npx prisma generate
+          npx tsc --noEmit
+          npm test -- --run
+
+      - name: Commit patch and clean up
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add src/app/page.tsx
+          git rm scripts/fix-innings-lead.py .github/workflows/fix-innings-lead.yml
+          git commit -m "fix: calculate innings lead for batting team"
+          git push origin HEAD:feature/custom-delivery-runs
