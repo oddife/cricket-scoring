@@ -326,3 +326,5 @@ export async function DELETE(request: Request) {
     );
   }
 }
+
+// Completed-tournament UI workflow trigger.
