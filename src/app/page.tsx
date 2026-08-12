@@ -2353,7 +2353,12 @@ const [resumingMatchId, setResumingMatchId] =
           !finalOddOver &&
           combinedLegalBallsAfterOver >= 12;
 
-        if (
+        if (finalOddOver && liveBowlerId) {
+          // Preserve the manually selected single bowler for an odd final over.
+          setLiveBowlerAId(liveBowlerId);
+          setLiveBowlerBId("");
+          setLiveBowlerId(liveBowlerId);
+        } else if (
           bowlingMode === "DOUBLE" &&
           !finalOddOver &&
           !mustSelectFreshDoublePair &&
@@ -2378,12 +2383,20 @@ const [resumingMatchId, setResumingMatchId] =
           (current) => current + 1,
         );
 
-        if (bowlingMode === "DOUBLE") {
+        const finalOddOverInProgress =
+          liveOddOvers &&
+          liveCurrentOver >= oversPerInnings;
+
+        if (bowlingMode === "DOUBLE" && !finalOddOverInProgress) {
           setLiveBowlerId(
             liveBowlerId === liveBowlerAId
               ? liveBowlerBId
               : liveBowlerAId,
           );
+        } else if (finalOddOverInProgress && liveBowlerId) {
+          // Odd final over: the scorer selects one bowler and that bowler
+          // remains active for the entire over. Do not alternate or clear it.
+          setLiveBowlerId(liveBowlerId);
         }
       }
 
@@ -2669,8 +2682,7 @@ const [resumingMatchId, setResumingMatchId] =
       };
     }).filter(
       (stat) =>
-        stat.runs > 0 ||
-        stat.balls > 0 ||
+        stat.dismissed ||
         activeBatters.has(stat.player.id),
     );
 
@@ -2983,8 +2995,8 @@ const [resumingMatchId, setResumingMatchId] =
                         {battingStats.map((stat) => (
                           <div key={stat.player.id} className={`grid grid-cols-[1fr_50px_50px_45px_45px_65px] items-center gap-2 rounded-lg px-2 py-2 text-sm ${stat.player.id === liveStrikerId ? "bg-emerald-50" : ""}`}>
                             <div className="flex min-w-0 items-center gap-2">
-                              <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-emerald-600 text-xs font-bold text-white [color-scheme:dark]">{stat.player.jerseyNumber ?? ""}</span>
-                              <span className="truncate font-bold">{stat.player.name}{stat.player.id === liveStrikerId ? " *" : ""}</span>
+                              <span className={`flex h-7 w-7 shrink-0 items-center justify-center rounded-full text-xs font-bold text-white [color-scheme:dark] ${stat.dismissed ? "bg-red-600" : "bg-emerald-600"}`}>{stat.player.jerseyNumber ?? ""}</span>
+                              <span className="truncate font-bold">{stat.player.name}{stat.player.id === liveStrikerId ? " *" : ""}{stat.dismissed ? " OUT" : ""}</span>
                             </div>
                             <b>{stat.runs}</b><span>{stat.balls}</span><span>{stat.fours}</span><span>{stat.sixes}</span><span>{stat.strikeRate}</span>
                           </div>
