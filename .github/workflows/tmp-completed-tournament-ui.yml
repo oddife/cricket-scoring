@@ -24,18 +24,6 @@ jobs:
           text = path.read_text()
 
           if 'status: "ACTIVE" | "COMPLETED";' not in text:
-              old_type = '''type Tournament = {
-                id: string;
-                name: string;
-                season: string | null;
-                format: string;
-                startDate: string | null;
-                endDate: string | null;
-                teams: TournamentTeam[];
-                _count: {
-                  matches: number;
-                };
-              };'''
               new_type = '''type Tournament = {
                 id: string;
                 name: string;
@@ -55,9 +43,11 @@ jobs:
                   matches: number;
                 };
               };'''
-              if old_type not in text:
-                  raise SystemExit('Tournament type block not found')
-              text = text.replace(old_type, new_type, 1)
+              pattern = re.compile(r'type Tournament = \{.*?\n\};\n\ntype ScorecardMatch', re.S)
+              replacement = new_type + '\n\ntype ScorecardMatch'
+              text, count = pattern.subn(replacement, text, count=1)
+              if count != 1:
+                  raise SystemExit('Tournament type regex did not match')
 
           if 'Winner: {tournament.winner.name}' not in text:
               start = text.find('Existing Tournaments')
