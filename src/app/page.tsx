@@ -51,6 +51,8 @@ type LiveMatchSummary = {
   teamA: { id: string; name: string; shortName: string | null };
   teamB: { id: string; name: string; shortName: string | null };
   status: string;
+  result?: string;
+  winnerId?: string | null;
   createdAt: string;
   bowlingMode: BowlingMode;
   oversPerInnings: number;
@@ -231,6 +233,8 @@ const [completedMatches, setCompletedMatches] =
   useState<LiveMatchSummary[]>([]);
 
 const [loadingCompletedMatches, setLoadingCompletedMatches] = useState(false);
+
+const [expandedMatchId, setExpandedMatchId] = useState<string | null>(null);
   const [scorecardMatch, setScorecardMatch] = useState<ScorecardMatch | null>(null);
   const [loadingScorecard, setLoadingScorecard] = useState(false);
 
@@ -4745,18 +4749,22 @@ hover:bg-emerald-500/10 [color-scheme:dark]"
               const innings = [...match.innings].sort(
                 (a, b) => a.inningsNumber - b.inningsNumber,
               );
+              const firstInnings = innings[0];
+              const lastInnings = innings[innings.length - 1];
+              const expanded = expandedMatchId === match.id;
 
               const formatScore = (item: (typeof innings)[number]) =>
                 `${item.totalRuns}/${item.wickets} (${Math.floor(item.legalBalls / 6)}.${item.legalBalls % 6})`;
 
-              const firstInnings = innings[0];
-              const secondInnings = innings[1];
+              const teamName = (teamId: string) =>
+                teamId === match.teamA.id ? match.teamA.name : match.teamB.name;
+
               const winnerId =
-                firstInnings && secondInnings
-                  ? firstInnings.totalRuns > secondInnings.totalRuns
+                firstInnings && lastInnings && innings.length === 2
+                  ? firstInnings.totalRuns > lastInnings.totalRuns
                     ? firstInnings.battingTeamId
-                    : firstInnings.totalRuns < secondInnings.totalRuns
-                      ? secondInnings.battingTeamId
+                    : firstInnings.totalRuns < lastInnings.totalRuns
+                      ? lastInnings.battingTeamId
                       : null
                   : null;
 
@@ -4770,12 +4778,17 @@ hover:bg-emerald-500/10 [color-scheme:dark]"
               return (
                 <div
                   key={match.id}
-                  className="rounded-2xl border border-slate-800 bg-slate-950 p-4 [color-scheme:dark]"
+                  className={`rounded-2xl border border-slate-800 bg-slate-950 transition ${expanded ? "p-4" : "p-3"}`}
                 >
-                  <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-                    <div className="min-w-0 flex-1">
-                      <div className="flex items-center justify-between gap-3">
-                        <p className="truncate text-lg font-bold text-slate-100">
+                  <button
+                    type="button"
+                    onClick={() => setExpandedMatchId(expanded ? null : match.id)}
+                    className="w-full text-left"
+                    aria-expanded={expanded}
+                  >
+                    <div className="grid min-w-0 gap-1.5 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-center">
+                      <div className="flex min-w-0 items-center justify-between gap-3">
+                        <p className="truncate text-base font-bold text-slate-100">
                           {match.teamA.name} <span className="text-slate-600">vs</span> {match.teamB.name}
                         </p>
                         <span className="whitespace-nowrap text-xs font-medium text-slate-500">
@@ -4783,49 +4796,58 @@ hover:bg-emerald-500/10 [color-scheme:dark]"
                         </span>
                       </div>
 
-                      {innings.length > 0 ? (
-                        <div className="mt-3 space-y-1 text-sm">
-                          {innings.map((item) => {
-                            const battingTeamName =
-                              item.battingTeamId === match.teamA.id
-                                ? match.teamA.name
-                                : match.teamB.name;
-
-                            return (
-                              <div key={item.id} className="flex flex-wrap items-center gap-x-2 gap-y-1">
-                                <span className="font-medium text-slate-300">{battingTeamName}</span>
-                                <span className="font-bold text-slate-100">{formatScore(item)}</span>
-                              </div>
-                            );
-                          })}
-                        </div>
-                      ) : (
-                        <p className="mt-2 text-sm text-slate-500">No innings data available.</p>
-                      )}
-
-                      <div className="mt-3 flex flex-wrap items-center gap-2 text-xs">
-                        {winnerName ? (
-                          <span className="rounded-lg bg-emerald-500/10 px-2.5 py-1 font-semibold text-emerald-400">
-                            {winnerName} won
-                          </span>
-                        ) : (
-                          <span className="rounded-lg bg-slate-800 px-2.5 py-1 font-semibold text-slate-400">
-                            Match drawn / tied
+                      <div className="flex min-w-0 flex-wrap items-center gap-x-4 gap-y-1 text-sm">
+                        {firstInnings && (
+                          <span className="truncate text-slate-300">
+                            <b className="text-slate-100">{teamName(firstInnings.battingTeamId)}</b> {formatScore(firstInnings)}
                           </span>
                         )}
-                        <span className="rounded-lg bg-slate-800 px-2.5 py-1 text-slate-500">
-                          {match.oversPerInnings} overs
-                        </span>
-                        <span className="rounded-lg bg-slate-800 px-2.5 py-1 text-slate-500">
-                          {match.inningsPerMatch} innings
-                        </span>
+                        {lastInnings && lastInnings.id !== firstInnings?.id && (
+                          <span className="truncate text-slate-300">
+                            <b className="text-slate-100">{teamName(lastInnings.battingTeamId)}</b> {formatScore(lastInnings)}
+                          </span>
+                        )}
+                        <span className="text-xs text-slate-500">{expanded ? "Collapse" : "Expand"}</span>
                       </div>
                     </div>
+                  </button>
 
-                    <button type="button" onClick={() => void openScorecard(match.id)} disabled={loadingScorecard} className="h-11 shrink-0 rounded-xl border border-emerald-500/40 bg-emerald-500/10 px-5 font-semibold text-emerald-400 transition hover:bg-emerald-500/20 disabled:opacity-50">
-                      {loadingScorecard ? "Loading..." : "Scorecard"}
-                    </button>
-                  </div>
+                  {expanded && (
+                    <div className="mt-3 border-t border-slate-800 pt-3">
+                      <div className="space-y-1.5 text-sm">
+                        {innings.map((item) => (
+                          <div key={item.id} className="flex flex-wrap items-center justify-between gap-2">
+                            <span className="text-slate-300">{teamName(item.battingTeamId)}</span>
+                            <span className="font-bold text-slate-100">{formatScore(item)}</span>
+                          </div>
+                        ))}
+                      </div>
+
+                      <div className="mt-3 flex flex-wrap items-center justify-between gap-2 border-t border-slate-800 pt-3 text-xs">
+                        <div className="flex flex-wrap items-center gap-2">
+                          {winnerName ? (
+                            <span className="rounded-lg bg-emerald-500/10 px-2.5 py-1 font-semibold text-emerald-400">{winnerName} won</span>
+                          ) : (
+                            <span className="rounded-lg bg-slate-800 px-2.5 py-1 font-semibold text-slate-400">Match drawn / tied</span>
+                          )}
+                          <span className="rounded-lg bg-slate-800 px-2.5 py-1 text-slate-500">{match.oversPerInnings} overs</span>
+                          <span className="rounded-lg bg-slate-800 px-2.5 py-1 text-slate-500">{match.inningsPerMatch} innings</span>
+                        </div>
+
+                        <button
+                          type="button"
+                          onClick={(event) => {
+                            event.stopPropagation();
+                            void openScorecard(match.id);
+                          }}
+                          disabled={loadingScorecard}
+                          className="h-10 rounded-xl border border-emerald-500/40 bg-emerald-500/10 px-4 font-semibold text-emerald-400 transition hover:bg-emerald-500/20 disabled:opacity-50"
+                        >
+                          {loadingScorecard ? "Loading..." : "Scorecard"}
+                        </button>
+                      </div>
+                    </div>
+                  )}
                 </div>
               );
             })}
