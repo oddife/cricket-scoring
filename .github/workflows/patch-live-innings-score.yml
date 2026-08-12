@@ -10,7 +10,7 @@ permissions:
 
 jobs:
   patch:
-    if: ${{ !startsWith(github.event.head_commit.message, 'fix: update live innings score summary') && !startsWith(github.event.head_commit.message, 'chore: remove temporary live innings patch workflow') }}
+    if: ${{ !startsWith(github.event.head_commit.message, 'fix: update live innings score summary') && !startsWith(github.event.head_commit.message, 'chore: remove temporary live innings patch workflow') && !startsWith(github.event.head_commit.message, 'chore: retry live innings score patch') }}
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -23,47 +23,37 @@ jobs:
         run: |
           from pathlib import Path
           import re
-
           p = Path("src/app/page.tsx")
           s = p.read_text()
 
-          # Keep wickets in the client history model so the top summary can
-          # render completed innings as runs/wickets instead of runs/-. 
           s, n = re.subn(
               r'(type LiveInningsHistory = \{\n\s*inningsNumber: number;\n\s*totalRuns: number;\n)(\s*battingTeamId: string;)',
               r'\1    wickets?: number;\n\2',
               s,
               count=1,
           )
-          if n != 1:
+          if n != 1 and 'wickets?: number;' not in s:
               raise SystemExit("Could not update LiveInningsHistory type")
 
-          # Make refreshLiveInnings optionally reload the full match innings
-          # history. This is what keeps previous innings scores/wickets current.
           s, n = re.subn(
               r'async function refreshLiveInnings\(inningsId = liveInningsId\) \{',
               'async function refreshLiveInnings(inningsId = liveInningsId, matchId = createdMatchId) {',
               s,
               count=1,
           )
-          if n != 1:
-              raise SystemExit("Could not update refreshLiveInnings signature")
 
-          marker = '      setLiveDeliveries(deliveries);\n'
-          history_block = '''      setLiveDeliveries(deliveries);\n\n      if (matchId) {\n        try {\n          const matchResponse = await fetch(`/api/matches/${matchId}`, { cache: "no-store" });\n          const matchData = await matchResponse.json();\n          const matchInnings = Array.isArray(matchData?.match?.innings)\n            ? matchData.match.innings\n            : Array.isArray(matchData?.innings)\n              ? matchData.innings\n              : [];\n          if (matchInnings.length > 0) {\n            setLiveInningsHistory(\n              matchInnings.map((item: { inningsNumber: number; totalRuns: number; wickets?: number; battingTeamId: string; target?: number | null }) => ({\n                inningsNumber: Number(item.inningsNumber),\n                totalRuns: Number(item.totalRuns ?? 0),\n                wickets: Number(item.wickets ?? 0),\n                battingTeamId: item.battingTeamId,\n                target: item.target ?? null,\n              })),\n            );\n          }\n        } catch (historyError) {\n          console.error("Failed to refresh innings history:", historyError);\n        }\n      }\n'''
-          if marker not in s:
-              raise SystemExit("Could not find live delivery refresh marker")
-          s = s.replace(marker, history_block, 1)
+          if 'matchInnings.map((item:' not in s:
+              marker = '      setLiveDeliveries(deliveries);\n'
+              block = '''      setLiveDeliveries(deliveries);\n\n      if (matchId) {\n        try {\n          const matchResponse = await fetch(`/api/matches/${matchId}`, { cache: "no-store" });\n          const matchData = await matchResponse.json();\n          const matchInnings = Array.isArray(matchData?.match?.innings)\n            ? matchData.match.innings\n            : Array.isArray(matchData?.innings)\n              ? matchData.innings\n              : [];\n          if (matchInnings.length > 0) {\n            setLiveInningsHistory(\n              matchInnings.map((item: { inningsNumber: number; totalRuns: number; wickets?: number; battingTeamId: string; target?: number | null }) => ({\n                inningsNumber: Number(item.inningsNumber),\n                totalRuns: Number(item.totalRuns ?? 0),\n                wickets: Number(item.wickets ?? 0),\n                battingTeamId: item.battingTeamId,\n                target: item.target ?? null,\n              })),\n            );\n          }\n        } catch (historyError) {\n          console.error("Failed to refresh innings history:", historyError);\n        }\n      }\n'''
+              if marker not in s:
+                  raise SystemExit("Could not find live delivery refresh marker")
+              s = s.replace(marker, block, 1)
 
-          # Ensure all existing refresh call sites that know the match use it.
           s = s.replace('await refreshLiveInnings(currentInnings.id);', 'await refreshLiveInnings(currentInnings.id, match.id);')
           s = s.replace('await refreshLiveInnings(liveInningsId);', 'await refreshLiveInnings(liveInningsId, createdMatchId);')
           s = s.replace('void refreshLiveInnings(data.id);', 'void refreshLiveInnings(data.id, createdMatchId);')
-
-          # Render completed innings as runs/wickets and unopened innings as -/-. 
           s = s.replace('`${history.totalRuns}/-`', '`${history.totalRuns}/${history.wickets ?? 0}`')
           s = s.replace('"- / -"', '"-/-"')
-
           p.write_text(s)
 
       - name: Validate source changes
