@@ -1,0 +1,1 @@
+trigger encoding cleanup after excluding archived backup files
