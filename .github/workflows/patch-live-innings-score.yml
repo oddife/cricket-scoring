@@ -10,7 +10,6 @@ permissions:
 
 jobs:
   patch:
-    if: ${{ !startsWith(github.event.head_commit.message, 'fix: update live innings score summary') && !startsWith(github.event.head_commit.message, 'chore: remove temporary live innings patch workflow') && !startsWith(github.event.head_commit.message, 'chore: retry live innings score patch') }}
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -26,20 +25,17 @@ jobs:
           p = Path("src/app/page.tsx")
           s = p.read_text()
 
-          s, n = re.subn(
-              r'(type LiveInningsHistory = \{\n\s*inningsNumber: number;\n\s*totalRuns: number;\n)(\s*battingTeamId: string;)',
-              r'\1    wickets?: number;\n\2',
-              s,
-              count=1,
-          )
-          if n != 1 and 'wickets?: number;' not in s:
-              raise SystemExit("Could not update LiveInningsHistory type")
+          if 'wickets?: number;' not in s:
+              s, n = re.subn(
+                  r'(type LiveInningsHistory = \{\n\s*inningsNumber: number;\n\s*totalRuns: number;\n)(\s*battingTeamId: string;)',
+                  r'\1    wickets?: number;\n\2', s, count=1)
+              if n != 1:
+                  raise SystemExit("Could not update LiveInningsHistory type")
 
-          s, n = re.subn(
-              r'async function refreshLiveInnings\(inningsId = liveInningsId\) \{',
+          s = s.replace(
+              'async function refreshLiveInnings(inningsId = liveInningsId) {',
               'async function refreshLiveInnings(inningsId = liveInningsId, matchId = createdMatchId) {',
-              s,
-              count=1,
+              1,
           )
 
           if 'matchInnings.map((item:' not in s:
