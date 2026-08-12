@@ -4281,15 +4281,10 @@ late-800 disabled:opacity-50 [color-scheme:dark]"
             </h2>
 
             <p className="mt-2 text-sm text-slate-400">
-              {selectedTournament.season
-                ? `${selectedTournament.season} ${String.fromCharCode(0x2022)} `
-                : ""}
-              {
-                formatLabels[
-                  selectedTournament.format
-                ]
-              }
-            </p>
+    Season : {selectedTournament.season ?? "-"}
+    {"   "}
+    Format : {formatLabels[selectedTournament.format]}
+  </p>
           </div>
 
           <button
