@@ -18,20 +18,14 @@ jobs:
         run: |
           python3 - <<'PY'
           from pathlib import Path
+          import re
 
           p = Path('src/app/page.tsx')
           s = p.read_text(encoding='utf-8')
 
-          old = '''            <p className="mt-2 text-sm text-slate-400">
-              {selectedTournament.season
-                ? `${selectedTournament.season} ${String.fromCharCode(0x2022)} `
-                : ""}
-              {
-                formatLabels[
-                  selectedTournament.format
-                ]
-              }
-            </p>'''
+          pattern = re.compile(
+              r'''            <p className="mt-2 text-sm text-slate-400">\s*\{selectedTournament\.season[\s\S]*?\n            </p>'''
+          )
 
           new = '''            <p className="mt-2 text-sm text-slate-400">
               Season : {selectedTournament.season ?? "-"}
@@ -39,10 +33,11 @@ jobs:
               Format : {formatLabels[selectedTournament.format]}
             </p>'''
 
-          if s.count(old) != 1:
-              raise SystemExit(f"Expected exactly one tournament header block, found {s.count(old)}")
+          matches = pattern.findall(s)
+          if len(matches) != 1:
+              raise SystemExit(f"Expected exactly one tournament header block, found {len(matches)}")
 
-          p.write_text(s.replace(old, new, 1), encoding='utf-8')
+          p.write_text(pattern.sub(new, s, count=1), encoding='utf-8')
           print('Tournament header updated exactly once.')
           PY
 
