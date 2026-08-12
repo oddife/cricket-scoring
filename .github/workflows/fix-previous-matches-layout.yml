@@ -22,94 +22,58 @@ jobs:
         run: |
           python - <<'PY'
           from pathlib import Path
-          import re
 
           p = Path('src/app/page.tsx')
-          s = p.read_text(encoding='utf-8')
+          lines = p.read_text(encoding='utf-8').splitlines(keepends=True)
 
-          old_winner = '''              const winnerId =
-                firstInnings && lastInnings && innings.length === 2
-                  ? firstInnings.totalRuns > lastInnings.totalRuns
-                    ? firstInnings.battingTeamId
-                    : firstInnings.totalRuns < lastInnings.totalRuns
-                      ? lastInnings.battingTeamId
-                      : null
-                  : null;
+          # Winner: use the winner stored on the completed match instead of
+          # trying to infer it from innings totals.
+          winner_start = next(i for i, line in enumerate(lines) if 'const winnerId =' in line)
+          winner_name = next(i for i in range(winner_start, len(lines)) if 'const winnerName =' in lines[i])
+          winner_end = next(i for i in range(winner_name, len(lines)) if ': null;' in lines[i])
+          indent = lines[winner_start][:len(lines[winner_start]) - len(lines[winner_start].lstrip())]
+          new_winner = [
+              f'{indent}const winnerName =\\n',
+              f'{indent}  match.winnerId === match.teamA.id\\n',
+              f'{indent}    ? match.teamA.name\\n',
+              f'{indent}    : match.winnerId === match.teamB.id\\n',
+              f'{indent}      ? match.teamB.name\\n',
+              f'{indent}      : null;\\n',
+              '\\n',
+          ]
+          lines[winner_start:winner_end + 1] = new_winner
 
-              const winnerName =
-                winnerId === match.teamA.id
-                  ? match.teamA.name
-                  : winnerId === match.teamB.id
-                    ? match.teamB.name
-                    : null;'''
+          # Header: title + date + Expand/Collapse only. Scores belong in the
+          # expanded body below the header.
+          button_start = next(i for i, line in enumerate(lines) if 'aria-expanded={expanded}' in line)
+          while button_start >= 0 and '<button' not in lines[button_start]:
+              button_start -= 1
+          button_end = next(i for i in range(button_start, len(lines)) if lines[i].strip() == '</button>')
+          indent = lines[button_start][:len(lines[button_start]) - len(lines[button_start].lstrip())]
+          inner = indent + '  '
+          new_header = [
+              f'{indent}<button\\n',
+              f'{inner}type="button"\\n',
+              f'{inner}onClick={() => setExpandedMatchId(expanded ? null : match.id)}\\n',
+              f'{inner}className="w-full text-left"\\n',
+              f'{inner}aria-expanded={{expanded}}\\n',
+              f'{indent}>\\n',
+              f'{inner}<div className="flex min-w-0 items-center justify-between gap-3">\\n',
+              f'{inner}  <p className="truncate text-base font-bold text-slate-100">\\n',
+              f'{inner}    {{match.teamA.name}} <span className="text-slate-600">vs</span> {{match.teamB.name}}\\n',
+              f'{inner}  </p>\\n',
+              f'{inner}  <div className="flex shrink-0 items-center gap-3">\\n',
+              f'{inner}    <span className="whitespace-nowrap text-xs font-medium text-slate-500">\\n',
+              f'{inner}      {{new Date(match.createdAt).toLocaleDateString("en-IN", {{ day: "2-digit", month: "short", year: "numeric" }})}}\\n',
+              f'{inner}    </span>\\n',
+              f'{inner}    <span className="text-xs text-slate-500">{{expanded ? "Collapse" : "Expand"}}</span>\\n',
+              f'{inner}  </div>\\n',
+              f'{inner}</div>\\n',
+              f'{indent}</button>\\n',
+          ]
+          lines[button_start:button_end + 1] = new_header
 
-          new_winner = '''              const winnerName =
-                match.winnerId === match.teamA.id
-                  ? match.teamA.name
-                  : match.winnerId === match.teamB.id
-                    ? match.teamB.name
-                    : null;'''
-
-          if old_winner not in s:
-              raise SystemExit('Winner calculation block not found')
-          s = s.replace(old_winner, new_winner, 1)
-
-          old_header = '''                  <button
-                    type="button"
-                    onClick={() => setExpandedMatchId(expanded ? null : match.id)}
-                    className="w-full text-left"
-                    aria-expanded={expanded}
-                  >
-                    <div className="grid min-w-0 gap-1.5 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-center">
-                      <div className="flex min-w-0 items-center justify-between gap-3">
-                        <p className="truncate text-base font-bold text-slate-100">
-                          {match.teamA.name} <span className="text-slate-600">vs</span> {match.teamB.name}
-                        </p>
-                        <span className="whitespace-nowrap text-xs font-medium text-slate-500">
-                          {new Date(match.createdAt).toLocaleDateString("en-IN", { day: "2-digit", month: "short", year: "numeric" })}
-                        </span>
-                      </div>
-
-                      <div className="flex min-w-0 flex-wrap items-center gap-x-4 gap-y-1 text-sm">
-                        {firstInnings && (
-                          <span className="truncate text-slate-300">
-                            <b className="text-slate-100">{teamName(firstInnings.battingTeamId)}</b> {formatScore(firstInnings)}
-                          </span>
-                        )}
-                        {lastInnings && lastInnings.id !== firstInnings?.id && (
-                          <span className="truncate text-slate-300">
-                            <b className="text-slate-100">{teamName(lastInnings.battingTeamId)}</b> {formatScore(lastInnings)}
-                          </span>
-                        )}
-                        <span className="text-xs text-slate-500">{expanded ? "Collapse" : "Expand"}</span>
-                      </div>
-                    </div>
-                  </button>'''
-
-          new_header = '''                  <button
-                    type="button"
-                    onClick={() => setExpandedMatchId(expanded ? null : match.id)}
-                    className="w-full text-left"
-                    aria-expanded={expanded}
-                  >
-                    <div className="flex min-w-0 items-center justify-between gap-3">
-                      <p className="truncate text-base font-bold text-slate-100">
-                        {match.teamA.name} <span className="text-slate-600">vs</span> {match.teamB.name}
-                      </p>
-                      <div className="flex shrink-0 items-center gap-3">
-                        <span className="whitespace-nowrap text-xs font-medium text-slate-500">
-                          {new Date(match.createdAt).toLocaleDateString("en-IN", { day: "2-digit", month: "short", year: "numeric" })}
-                        </span>
-                        <span className="text-xs text-slate-500">{expanded ? "Collapse" : "Expand"}</span>
-                      </div>
-                    </div>
-                  </button>'''
-
-          if old_header not in s:
-              raise SystemExit('Previous matches header block not found')
-          s = s.replace(old_header, new_header, 1)
-
-          p.write_text(s, encoding='utf-8')
+          p.write_text(''.join(lines), encoding='utf-8')
           print('Previous matches layout and winner source updated.')
           PY
 
