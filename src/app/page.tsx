@@ -50,6 +50,7 @@ type LiveMatchSummary = {
   teamA: { id: string; name: string; shortName: string | null };
   teamB: { id: string; name: string; shortName: string | null };
   status: string;
+  createdAt: string;
   bowlingMode: BowlingMode;
   oversPerInnings: number;
   inningsPerMatch: number;
@@ -4735,10 +4736,15 @@ hover:bg-emerald-500/10 [color-scheme:dark]"
                   className="rounded-2xl border border-slate-800 bg-slate-950 p-4 [color-scheme:dark]"
                 >
                   <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-                    <div className="min-w-0">
-                      <p className="text-lg font-bold text-slate-100">
-                        {match.teamA.name} <span className="text-slate-600">vs</span> {match.teamB.name}
-                      </p>
+                    <div className="min-w-0 flex-1">
+                      <div className="flex items-center justify-between gap-3">
+                        <p className="truncate text-lg font-bold text-slate-100">
+                          {match.teamA.name} <span className="text-slate-600">vs</span> {match.teamB.name}
+                        </p>
+                        <span className="whitespace-nowrap text-xs font-medium text-slate-500">
+                          {new Date(match.createdAt).toLocaleDateString("en-IN", { day: "2-digit", month: "short", year: "numeric" })}
+                        </span>
+                      </div>
 
                       {innings.length > 0 ? (
                         <div className="mt-3 space-y-1 text-sm">
