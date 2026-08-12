@@ -4,6 +4,7 @@ import {
   addPlayerToTeam,
   createPlayer,
   getTeam,
+  removePlayerFromTeam,
   updatePlayer,
 } from "@/lib/teams";
 
@@ -68,26 +69,12 @@ export async function POST(
         ? body.playerId.trim()
         : "";
 
-    /*
-     * If playerId is supplied, add an existing
-     * player to the team.
-     */
     if (playerId) {
-      const membership = await addPlayerToTeam(
-        teamId,
-        playerId,
-      );
+      const membership = await addPlayerToTeam(teamId, playerId);
 
-      return NextResponse.json(
-        membership,
-        { status: 201 },
-      );
+      return NextResponse.json(membership, { status: 201 });
     }
 
-    /*
-     * Otherwise create a new player and then
-     * add that player to the team.
-     */
     const name =
       typeof body.name === "string"
         ? body.name.trim()
@@ -109,24 +96,17 @@ export async function POST(
 
     if (
       jerseyNumber !== undefined &&
-      (!Number.isInteger(jerseyNumber) ||
-        jerseyNumber < 0)
+      (!Number.isInteger(jerseyNumber) || jerseyNumber < 0)
     ) {
       return NextResponse.json(
-        {
-          error:
-            "Jersey number must be a valid positive number.",
-        },
+        { error: "Jersey number must be a valid positive number." },
         { status: 400 },
       );
     }
 
     const player = await createPlayer({
       name,
-      photo:
-        typeof body.photo === "string"
-          ? body.photo
-          : undefined,
+      photo: typeof body.photo === "string" ? body.photo : undefined,
       jerseyNumber,
       battingStyle:
         typeof body.battingStyle === "string"
@@ -138,47 +118,69 @@ export async function POST(
           : undefined,
     });
 
-    const membership = await addPlayerToTeam(
-      teamId,
-      player.id,
-    );
+    const membership = await addPlayerToTeam(teamId, player.id);
 
-    return NextResponse.json(
-      membership,
-      { status: 201 },
-    );
+    return NextResponse.json(membership, { status: 201 });
   } catch (error) {
     console.error("POST team player error:", error);
 
     const message =
-      error instanceof Error
-        ? error.message
-        : "Failed to add player.";
+      error instanceof Error ? error.message : "Failed to add player.";
 
-    if (
-      message ===
-      "Player is already in this team."
-    ) {
+    if (message === "Player is already in this team.") {
+      return NextResponse.json({ error: message }, { status: 409 });
+    }
+
+    if (message === "Team not found." || message === "Player not found.") {
+      return NextResponse.json({ error: message }, { status: 404 });
+    }
+
+    return NextResponse.json({ error: message }, { status: 500 });
+  }
+}
+
+/**
+ * Remove a player from this team's current roster.
+ * This only deletes the TeamPlayer membership; the global Player remains.
+ */
+export async function DELETE(
+  request: Request,
+  { params }: RouteContext,
+) {
+  try {
+    const { id: teamId } = await params;
+    const body = await request.json().catch(() => ({}));
+    const playerId =
+      typeof body.playerId === "string" ? body.playerId.trim() : "";
+
+    if (!teamId) {
       return NextResponse.json(
-        { error: message },
-        { status: 409 },
+        { error: "Team ID is required." },
+        { status: 400 },
       );
     }
 
-    if (
-      message === "Team not found." ||
-      message === "Player not found."
-    ) {
+    if (!playerId) {
       return NextResponse.json(
-        { error: message },
-        { status: 404 },
+        { error: "Player ID is required." },
+        { status: 400 },
       );
     }
 
-    return NextResponse.json(
-      { error: message },
-      { status: 500 },
-    );
+    await removePlayerFromTeam(teamId, playerId);
+
+    return NextResponse.json({ success: true });
+  } catch (error) {
+    console.error("DELETE team player error:", error);
+
+    const message =
+      error instanceof Error ? error.message : "Failed to remove player.";
+
+    if (message === "Player is not a member of this team.") {
+      return NextResponse.json({ error: message }, { status: 404 });
+    }
+
+    return NextResponse.json({ error: message }, { status: 500 });
   }
 }
 
@@ -202,9 +204,7 @@ export async function PUT(
     const body = await request.json();
 
     const playerId =
-      typeof body.playerId === "string"
-        ? body.playerId.trim()
-        : "";
+      typeof body.playerId === "string" ? body.playerId.trim() : "";
 
     if (!playerId) {
       return NextResponse.json(
@@ -213,10 +213,6 @@ export async function PUT(
       );
     }
 
-    /*
-     * Make sure the player actually belongs
-     * to this team before allowing an edit.
-     */
     const team = await getTeam(teamId);
 
     if (!team) {
@@ -232,10 +228,7 @@ export async function PUT(
 
     if (!membership) {
       return NextResponse.json(
-        {
-          error:
-            "Player is not a member of this team.",
-        },
+        { error: "Player is not a member of this team." },
         { status: 404 },
       );
     }
@@ -270,30 +263,18 @@ export async function PUT(
 
     if (body.photo !== undefined) {
       updateData.photo =
-        typeof body.photo === "string"
-          ? body.photo.trim() || null
-          : null;
+        typeof body.photo === "string" ? body.photo.trim() || null : null;
     }
 
     if (body.jerseyNumber !== undefined) {
-      if (
-        body.jerseyNumber === null ||
-        body.jerseyNumber === ""
-      ) {
+      if (body.jerseyNumber === null || body.jerseyNumber === "") {
         updateData.jerseyNumber = null;
       } else {
-        const jerseyNumber =
-          Number(body.jerseyNumber);
+        const jerseyNumber = Number(body.jerseyNumber);
 
-        if (
-          !Number.isInteger(jerseyNumber) ||
-          jerseyNumber < 0
-        ) {
+        if (!Number.isInteger(jerseyNumber) || jerseyNumber < 0) {
           return NextResponse.json(
-            {
-              error:
-                "Jersey number must be a valid positive number.",
-            },
+            { error: "Jersey number must be a valid positive number." },
             { status: 400 },
           );
         }
@@ -316,39 +297,7 @@ export async function PUT(
           : null;
     }
 
-const player = await updatePlayer(
-  playerId,
-  {
-    ...(updateData.name !== undefined
-      ? { name: updateData.name }
-      : {}),
-    ...(updateData.photo !== undefined &&
-    updateData.photo !== null
-      ? { photo: updateData.photo }
-      : {}),
-    ...(updateData.jerseyNumber !== undefined &&
-    updateData.jerseyNumber !== null
-      ? {
-          jerseyNumber:
-            updateData.jerseyNumber,
-        }
-      : {}),
-    ...(updateData.battingStyle !== undefined &&
-    updateData.battingStyle !== null
-      ? {
-          battingStyle:
-            updateData.battingStyle,
-        }
-      : {}),
-    ...(updateData.bowlingStyle !== undefined &&
-    updateData.bowlingStyle !== null
-      ? {
-          bowlingStyle:
-            updateData.bowlingStyle,
-        }
-      : {}),
-  },
-);
+    const player = await updatePlayer(playerId, updateData);
 
     return NextResponse.json({
       id: membership.id,
@@ -358,24 +307,15 @@ const player = await updatePlayer(
     console.error("PUT team player error:", error);
 
     const message =
-      error instanceof Error
-        ? error.message
-        : "Failed to update player.";
+      error instanceof Error ? error.message : "Failed to update player.";
 
     if (
       message === "Player not found." ||
-      message ===
-        "Player is not a member of this team."
+      message === "Player is not a member of this team."
     ) {
-      return NextResponse.json(
-        { error: message },
-        { status: 404 },
-      );
+      return NextResponse.json({ error: message }, { status: 404 });
     }
 
-    return NextResponse.json(
-      { error: message },
-      { status: 500 },
-    );
+    return NextResponse.json({ error: message }, { status: 500 });
   }
 }
