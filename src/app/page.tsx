@@ -76,17 +76,24 @@ type LiveMatchSummary = {
 };
 
 type Tournament = {
-  id: string;
-  name: string;
-  season: string | null;
-  format: string;
-  startDate: string | null;
-  endDate: string | null;
-  teams: TournamentTeam[];
-  _count: {
-    matches: number;
-  };
-};
+      id: string;
+      name: string;
+      season: string | null;
+      format: string;
+      startDate: string | null;
+      endDate: string | null;
+      status: "ACTIVE" | "COMPLETED";
+      winner: {
+        id: string;
+        name: string;
+        shortName: string | null;
+        logo: string | null;
+      } | null;
+      teams: TournamentTeam[];
+      _count: {
+        matches: number;
+      };
+    };
 
 type ScorecardMatch = {
   id: string;
@@ -3716,6 +3723,19 @@ er-emerald-500/50 hover:bg-slate-950 [color-scheme:dark]"
                             ]
                           }
                         </p>
+
+              {tournament.status === "COMPLETED" && (
+                <div className="mt-2 flex flex-wrap items-center gap-2">
+                  <span className="rounded-full border border-emerald-500/30 bg-emerald-500/10 px-2.5 py-1 text-[11px] font-bold uppercase tracking-wide text-emerald-400">
+                    COMPLETED
+                  </span>
+                  {tournament.winner && (
+                    <span className="text-xs font-medium text-slate-300">
+                      Winner: {tournament.winner.name}
+                    </span>
+                  )}
+                </div>
+              )}
                       </div>
 
                       <div className="text-right text-xs text-slate-500">
