@@ -32,3 +32,5 @@ jobs:
         run: npm test
       - name: Production build
         run: npm run build
+
+# Final branch validation for the roster UI changes.
