@@ -1,5 +1,6 @@
 import { execFileSync } from "node:child_process";
 import { existsSync, rmSync } from "node:fs";
+import { resolve } from "node:path";
 
 const env = {
   ...process.env,
@@ -11,14 +12,16 @@ if (existsSync("test.db")) {
   rmSync("test.db", { force: true });
 }
 
-const npx = process.platform === "win32" ? "npx.cmd" : "npx";
+const node = process.execPath;
+const prismaCli = resolve("node_modules/prisma/build/index.js");
+const vitestCli = resolve("node_modules/vitest/vitest.mjs");
 
-execFileSync(npx, ["prisma", "migrate", "deploy"], {
+execFileSync(node, [prismaCli, "migrate", "deploy"], {
   stdio: "inherit",
   env,
 });
 
-execFileSync(npx, ["vitest", "--run"], {
+execFileSync(node, [vitestCli, "--run"], {
   stdio: "inherit",
   env,
 });
