@@ -981,6 +981,38 @@ const [resumingMatchId, setResumingMatchId] =
     }
   }
 
+  async function removePlayerFromCurrentRoster(playerId: string, playerName: string) {
+    if (!selectedTeamId) return;
+    if (!window.confirm(`Remove "${playerName}" from this team's current roster?\n\nThe global player and historical match data will remain.`)) return;
+    try {
+      setError("");
+      const response = await fetch(`/api/teams/${selectedTeamId}/players`, { method: "DELETE", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ playerId }) });
+      const data = await response.json();
+      if (!response.ok) throw new Error(data?.error || "Failed to remove player from roster.");
+      await loadTeamPlayers(selectedTeamId);
+      if (selectedTournament) await refreshSelectedTournament(selectedTournament.id);
+    } catch (err) {
+      console.error(err);
+      setError(err instanceof Error ? err.message : "Failed to remove player from roster.");
+    }
+  }
+
+  async function removeTeamFromCurrentTournament(teamId: string, teamName: string) {
+    if (!selectedTournament) return;
+    if (!window.confirm(`Remove "${teamName}" from ${selectedTournament.name}?\n\nThe global team, players and historical match data will remain.`)) return;
+    try {
+      setError("");
+      const response = await fetch(`/api/tournaments/${selectedTournament.id}/teams`, { method: "DELETE", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ teamId }) });
+      const data = await response.json();
+      if (!response.ok) throw new Error(data?.error || "Failed to remove team from tournament.");
+      if (selectedTeamId === teamId) { setSelectedTeamId(null); setTeamPlayers([]); }
+      await refreshSelectedTournament(selectedTournament.id);
+    } catch (err) {
+      console.error(err);
+      setError(err instanceof Error ? err.message : "Failed to remove team from tournament.");
+    }
+  }
+
   // ---------------------------------------------------------
   // Live match resume
   // ---------------------------------------------------------
@@ -4476,8 +4508,11 @@ hover:bg-emerald-500/10 [color-scheme:dark]"
                         )}
                       </div>
 
-                      <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-slate-800 text-lg">
-                        {String.fromCodePoint(0x1F3CF)}
+                      <div className="flex shrink-0 items-center gap-2">
+                        <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-slate-800 text-lg">
+                          {String.fromCodePoint(0x1F3CF)}
+                        </div>
+                        <button type="button" title="Remove team from this tournament" aria-label={`Remove ${tournamentTeam.team.name} from this tournament`} onClick={(event) => { event.stopPropagation(); void removeTeamFromCurrentTournament(tournamentTeam.team.id, tournamentTeam.team.name); }} className="flex h-9 w-9 items-center justify-center rounded-xl border border-red-500/30 bg-red-500/10 text-lg font-bold text-red-400 transition hover:bg-red-500/20">−</button>
                       </div>
                     </div>
 
@@ -4607,9 +4642,7 @@ hover:bg-emerald-500/10 [color-scheme:dark]"
                           </span>
                         </button>
 
-                        <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-slate-800 text-lg">
-                          PLAYER
-                        </div>
+                        <button type="button" title="Remove player from current roster" aria-label={`Remove ${membership.player.name} from current roster`} onClick={() => void removePlayerFromCurrentRoster(membership.player.id, membership.player.name)} className="flex h-10 w-10 items-center justify-center rounded-xl border border-red-500/30 bg-red-500/10 text-xl font-bold text-red-400 transition hover:bg-red-500/20">−</button>
                       </div>
                     </div>
                   </div>
