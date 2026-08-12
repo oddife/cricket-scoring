@@ -4637,9 +4637,6 @@ hover:bg-emerald-500/10 [color-scheme:dark]"
                           className="flex h-10 items-center gap-2 rounded-xl border border-slate-700 bg-slate-800 px-3 text-sm font-medium text-slate-300 transition hover:border-emerald-500/50 hover:bg-emerald-500/10 hover:text-emerald-400 [color-scheme:dark]"
                         >
                           <span>EDIT</span>
-                          <span className="hidden sm:inline">
-                            Edit
-                          </span>
                         </button>
 
                         <button type="button" title="Remove player from current roster" aria-label={`Remove ${membership.player.name} from current roster`} onClick={() => void removePlayerFromCurrentRoster(membership.player.id, membership.player.name)} className="flex h-10 w-10 items-center justify-center rounded-xl border border-red-500/30 bg-red-500/10 text-xl font-bold text-red-400 transition hover:bg-red-500/20">−</button>
