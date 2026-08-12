@@ -32,6 +32,7 @@ type GlobalTeam = {
   name: string;
   shortName: string | null;
   logo?: string | null;
+  players?: GlobalPlayer[];
 };
 
 type ResumeMatchPlayer = {
@@ -203,6 +204,8 @@ export default function Home() {
   const [loadingGlobalTeams, setLoadingGlobalTeams] = useState(false);
   const [selectedExistingTeamId, setSelectedExistingTeamId] = useState("");
   const [addTeamMode, setAddTeamMode] =
+    useState<"EXISTING" | "NEW">("EXISTING");
+  const [addPlayerMode, setAddPlayerMode] =
     useState<"EXISTING" | "NEW">("EXISTING");
 
   const [teamName, setTeamName] = useState("");
@@ -593,6 +596,11 @@ const [resumingMatchId, setResumingMatchId] =
               name: team.name,
               shortName: team.shortName ?? null,
               logo: team.logo ?? null,
+              players: Array.isArray(team.players)
+                ? team.players
+                    .map((entry: { player?: GlobalPlayer }) => entry?.player ?? null)
+                    .filter((player: GlobalPlayer | null): player is GlobalPlayer => Boolean(player))
+                : [],
             }))
           : [],
       );
@@ -782,6 +790,52 @@ const [resumingMatchId, setResumingMatchId] =
     setPlayerJerseyNumber("");
     setPlayerBattingStyle("");
     setPlayerBowlingStyle("");
+  }
+
+  function openAddPlayerModal() {
+    setEditingPlayerId(null);
+    setAddPlayerMode("EXISTING");
+    setSelectedExistingPlayerId("");
+    resetPlayerForm();
+    setError("");
+    setShowAddPlayer(true);
+    void loadGlobalTeams();
+  }
+
+  async function addExistingPlayerToTeam() {
+    if (!selectedTeamId) {
+      setError("Please select a team first.");
+      return;
+    }
+    if (!selectedExistingPlayerId) {
+      setError("Please select an existing player.");
+      return;
+    }
+    try {
+      setLoadingPlayerCreate(true);
+      setError("");
+      const response = await fetch(`/api/teams/${selectedTeamId}/players`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ playerId: selectedExistingPlayerId }),
+      });
+      const data = await response.json();
+      if (!response.ok) {
+        throw new Error(data?.error || "Failed to add existing player.");
+      }
+      setSelectedExistingPlayerId("");
+      setShowAddPlayer(false);
+      setAddPlayerMode("EXISTING");
+      await loadTeamPlayers(selectedTeamId);
+      if (selectedTournament) {
+        await refreshSelectedTournament(selectedTournament.id);
+      }
+    } catch (err) {
+      console.error(err);
+      setError(err instanceof Error ? err.message : "Failed to add existing player.");
+    } finally {
+      setLoadingPlayerCreate(false);
+    }
   }
 
   async function createPlayerForTeam() {
@@ -3794,9 +3848,7 @@ late-800 disabled:opacity-50 [color-scheme:dark]"
       ) ?? [],
     );
 
-    const availableExistingTeams = globalTeams.filter(
-      (team) => !tournamentTeamIds.has(team.id),
-    );
+    const availableExistingTeams = globalTeams;
 
     return (
       <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-5 backdrop-blur-sm">
@@ -3874,17 +3926,19 @@ late-800 disabled:opacity-50 [color-scheme:dark]"
                         ? "No teams available"
                         : "Select a team"}
                   </option>
-                  {availableExistingTeams.map((team) => (
-                    <option key={team.id} value={team.id}>
-                      {team.name}
-                      {team.shortName
-                        ? ` (${team.shortName})`
-                        : ""}
-                    </option>
-                  ))}
+                  {availableExistingTeams.map((team) => {
+                    const alreadyInTournament = tournamentTeamIds.has(team.id);
+                    return (
+                      <option key={team.id} value={team.id} disabled={alreadyInTournament}>
+                        {team.name}
+                        {team.shortName ? ` (${team.shortName})` : ""}
+                        {alreadyInTournament ? " - already in tournament" : ""}
+                      </option>
+                    );
+                  })}
                 </select>
                 <p className="mt-2 text-xs text-slate-500">
-                  Teams already in this tournament are hidden.
+                  All existing teams are shown. Teams already in this tournament are disabled.
                 </p>
               </div>
             </div>
@@ -3983,189 +4037,91 @@ late-800 disabled:opacity-50 [color-scheme:dark]"
   function AddPlayerModal() {
     const selectedTeam =
       selectedTournament?.teams.find(
-        (tournamentTeam) =>
-          tournamentTeam.team.id === selectedTeamId,
+        (tournamentTeam) => tournamentTeam.team.id === selectedTeamId,
       )?.team ?? null;
 
-    if (!showAddPlayer || !selectedTeam) {
-      return null;
-    }
+    const currentTeamPlayerIds = new Set(
+      teamPlayers.map((membership) => membership.player.id),
+    );
+
+    const availableExistingPlayers = Array.from(
+      new Map(
+        globalTeams
+          .flatMap((team) => team.players ?? [])
+          .map((player) => [player.id, player]),
+      ).values(),
+    ).filter((player) => !currentTeamPlayerIds.has(player.id));
+
+    if (!showAddPlayer || !selectedTeam) return null;
+
+    const close = () => {
+      setShowAddPlayer(false);
+      setEditingPlayerId(null);
+      setSelectedExistingPlayerId("");
+      setAddPlayerMode("EXISTING");
+      resetPlayerForm();
+      setError("");
+    };
 
     return (
       <div className="fixed inset-0 z-[80] flex items-center justify-center bg-black/70 p-5 backdrop-blur-sm">
         <div className="w-full max-w-lg rounded-3xl border border-slate-700 bg-slate-900 p-6 shadow-2xl sm:p-8 [color-scheme:dark]">
           <div className="mb-6">
-            <div className="mb-4 flex h-12 w-12 items-center justify-center rounded-2xl bg-emerald-500/10 text-2xl">
-              PLAYER
-            </div>
-
-            <h2 className="text-xl font-semibold">
-              {editingPlayerId
-                ? "Edit Player"
-                : "Add Player"}
-            </h2>
-
+            <div className="mb-4 flex h-12 w-12 items-center justify-center rounded-2xl bg-emerald-500/10 text-2xl">PLAYER</div>
+            <h2 className="text-xl font-semibold">{editingPlayerId ? "Edit Player" : "Add Player"}</h2>
             <p className="mt-2 text-sm text-slate-400">
-              {editingPlayerId
-                ? "Update player details for "
-                : "Add a player to "}
-              <span className="font-medium text-slate-300 [color-scheme:dark]">
-                {selectedTeam.name}
-              </span>
-              .
+              {editingPlayerId ? "Update player details for " : "Add a player to "}
+              <span className="font-medium text-slate-300">{selectedTeam.name}</span>.
             </p>
           </div>
 
-          <div className="space-y-4">
-            <div>
-              <label
-                htmlFor="playerName"
-                className="mb-2 block text-sm font-medium text-slate-300 [color-scheme:dark]"
-              >
-                Player Name
-              </label>
-
-              <input
-                id="playerName"
-                type="text"
-                autoFocus
-                value={playerName}
-                onChange={(event) =>
-                  setPlayerName(event.target.value)
-                }
-                placeholder="e.g. Rahul Sharma"
-                className="h-12 w-full rounded-xl border border-slate-700 bg-slate-950 px-4 text-white outline-none placeholder:text-slate-600 focus:border-emerald-500"
-              />
+          {!editingPlayerId && (
+            <div className="mb-5 grid grid-cols-2 rounded-xl border border-slate-700 bg-slate-950 p-1">
+              <button type="button" onClick={() => { setAddPlayerMode("EXISTING"); setSelectedExistingPlayerId(""); setError(""); void loadGlobalTeams(); }} className={`rounded-lg px-3 py-2 text-sm font-medium ${addPlayerMode === "EXISTING" ? "bg-emerald-500 text-slate-950" : "text-slate-400"}`}>Existing Player</button>
+              <button type="button" onClick={() => { setAddPlayerMode("NEW"); setSelectedExistingPlayerId(""); resetPlayerForm(); setError(""); }} className={`rounded-lg px-3 py-2 text-sm font-medium ${addPlayerMode === "NEW" ? "bg-emerald-500 text-slate-950" : "text-slate-400"}`}>Create New</button>
             </div>
+          )}
 
+          {!editingPlayerId && addPlayerMode === "EXISTING" ? (
             <div>
-              <label
-                htmlFor="playerJerseyNumber"
-                className="mb-2 block text-sm font-medium text-slate-300 [color-scheme:dark]"
-              >
-                Jersey Number
-              </label>
-
-              <input
-                id="playerJerseyNumber"
-                type="text"
-                inputMode="numeric"
-                pattern="[0-9]*"
-                value={playerJerseyNumber}
-                onChange={(event) =>
-                  setPlayerJerseyNumber(
-                    event.target.value.replace(/\D/g, ""),
-                  )
-                }
-                placeholder="Optional"
-                className="h-12 w-full rounded-xl border border-slate-700 bg-slate-950 px-4 text-white outline-none placeholder:text-slate-600 focus:border-emerald-500"
-              />
+              <label htmlFor="existingPlayer" className="mb-2 block text-sm font-medium text-slate-300">Select Existing Player</label>
+              <select id="existingPlayer" autoFocus value={selectedExistingPlayerId} onChange={(event) => setSelectedExistingPlayerId(event.target.value)} disabled={loadingGlobalTeams || availableExistingPlayers.length === 0} className="h-12 w-full rounded-xl border border-slate-700 bg-slate-950 px-4 text-white [color-scheme:dark]">
+                <option value="">{loadingGlobalTeams ? "Loading players..." : availableExistingPlayers.length === 0 ? "No existing players available" : "Select a player"}</option>
+                {availableExistingPlayers.map((player) => (
+                  <option key={player.id} value={player.id}>
+                    {player.jerseyNumber != null ? `#${player.jerseyNumber} ` : ""}{player.name}
+                  </option>
+                ))}
+              </select>
+              <p className="mt-2 text-xs text-slate-500">Players already registered with {selectedTeam.name} are hidden.</p>
             </div>
-
-            <div className="grid gap-4 sm:grid-cols-2">
+          ) : (
+            <div className="space-y-4">
               <div>
-                <label
-                  htmlFor="playerBattingStyle"
-                  className="mb-2 block text-sm font-medium text-slate-300 [color-scheme:dark]"
-                >
-                  Batting Hand
-                </label>
-
-                <select
-                  id="playerBattingStyle"
-                  value={playerBattingStyle}
-                  onChange={(event) =>
-                    setPlayerBattingStyle(
-                      event.target.value,
-                    )
-                  }
-                  className="h-12 w-full rounded-xl border border-slate-700 bg-slate-950 px-4 text-white outline-none focus:border-emerald-500 [color-scheme:dark]"
-                >
-                  <option value="">
-                    Select hand
-                  </option>
-                  <option value="Right-handed">
-                    Right-handed
-                  </option>
-                  <option value="Left-handed">
-                    Left-handed
-                  </option>
-                </select>
+                <label htmlFor="playerName" className="mb-2 block text-sm font-medium text-slate-300">Player Name</label>
+                <input id="playerName" type="text" autoFocus value={playerName} onChange={(event) => setPlayerName(event.target.value)} placeholder="e.g. Rahul Sharma" className="h-12 w-full rounded-xl border border-slate-700 bg-slate-950 px-4 text-white placeholder:text-slate-600" />
               </div>
-
               <div>
-                <label
-                  htmlFor="playerBowlingStyle"
-                  className="mb-2 block text-sm font-medium text-slate-300 [color-scheme:dark]"
-                >
-                  Bowling Arm
-                </label>
-
-                <select
-                  id="playerBowlingStyle"
-                  value={playerBowlingStyle}
-                  onChange={(event) =>
-                    setPlayerBowlingStyle(
-                      event.target.value,
-                    )
-                  }
-                  className="h-12 w-full rounded-xl border border-slate-700 bg-slate-950 px-4 text-white outline-none focus:border-emerald-500 [color-scheme:dark]"
-                >
-                  <option value="">
-                    Select arm
-                  </option>
-                  <option value="Right-arm">
-                    Right-arm
-                  </option>
-                  <option value="Left-arm">
-                    Left-arm
-                  </option>
-                </select>
+                <label htmlFor="playerJerseyNumber" className="mb-2 block text-sm font-medium text-slate-300">Jersey Number</label>
+                <input id="playerJerseyNumber" type="text" inputMode="numeric" pattern="[0-9]*" value={playerJerseyNumber} onChange={(event) => setPlayerJerseyNumber(event.target.value.replace(/\D/g, ""))} placeholder="Optional" className="h-12 w-full rounded-xl border border-slate-700 bg-slate-950 px-4 text-white placeholder:text-slate-600" />
+              </div>
+              <div className="grid gap-4 sm:grid-cols-2">
+                <div>
+                  <label htmlFor="playerBattingStyle" className="mb-2 block text-sm font-medium text-slate-300">Batting Hand</label>
+                  <select id="playerBattingStyle" value={playerBattingStyle} onChange={(event) => setPlayerBattingStyle(event.target.value)} className="h-12 w-full rounded-xl border border-slate-700 bg-slate-950 px-4 text-white [color-scheme:dark]"><option value="">Select hand</option><option value="Right-handed">Right-handed</option><option value="Left-handed">Left-handed</option></select>
+                </div>
+                <div>
+                  <label htmlFor="playerBowlingStyle" className="mb-2 block text-sm font-medium text-slate-300">Bowling Arm</label>
+                  <select id="playerBowlingStyle" value={playerBowlingStyle} onChange={(event) => setPlayerBowlingStyle(event.target.value)} className="h-12 w-full rounded-xl border border-slate-700 bg-slate-950 px-4 text-white [color-scheme:dark]"><option value="">Select arm</option><option value="Right-arm">Right-arm</option><option value="Left-arm">Left-arm</option></select>
+                </div>
               </div>
             </div>
-          </div>
+          )}
 
           <div className="mt-8 flex gap-3">
-            <button
-              type="button"
-              disabled={
-                loadingPlayerCreate ||
-                loadingPlayerUpdate
-              }
-              onClick={() => {
-                setShowAddPlayer(false);
-                setEditingPlayerId(null);
-                resetPlayerForm();
-                setError("");
-              }}
-              className="h-12 flex-1 rounded-xl border border-slate-700 px-5 font-medium text-slate-300 hover:bg-slate-800 disabled:opacity-50 [color-scheme:dark]"
-            >
-              Cancel
-            </button>
-
-            <button
-              type="button"
-              disabled={
-                loadingPlayerCreate ||
-                loadingPlayerUpdate ||
-                !playerName.trim()
-              }
-              onClick={() =>
-                void (
-                  editingPlayerId
-                    ? updatePlayerForTeam()
-                    : createPlayerForTeam()
-                )
-              }
-              className="h-12 flex-1 rounded-xl bg-emerald-500 px-5 font-semibold text-slate-950 hover:bg-emerald-400 disabled:cursor-not-allowed disabled:bg-slate-800 disabled:text-slate-500"
-            >
-              {editingPlayerId
-                ? loadingPlayerUpdate
-                  ? "Saving..."
-                  : "Save Changes"
-                : loadingPlayerCreate
-                  ? "Adding..."
-                  : "Add Player"}
+            <button type="button" disabled={loadingPlayerCreate || loadingPlayerUpdate} onClick={close} className="h-12 flex-1 rounded-xl border border-slate-700 px-5 font-medium text-slate-300 hover:bg-slate-800 disabled:opacity-50">Cancel</button>
+            <button type="button" disabled={loadingPlayerCreate || loadingPlayerUpdate || (editingPlayerId ? !playerName.trim() : addPlayerMode === "EXISTING" ? !selectedExistingPlayerId : !playerName.trim())} onClick={() => void (editingPlayerId ? updatePlayerForTeam() : addPlayerMode === "EXISTING" ? addExistingPlayerToTeam() : createPlayerForTeam())} className="h-12 flex-1 rounded-xl bg-emerald-500 px-5 font-semibold text-slate-950 hover:bg-emerald-400 disabled:cursor-not-allowed disabled:bg-slate-800 disabled:text-slate-500">
+              {editingPlayerId ? (loadingPlayerUpdate ? "Saving..." : "Save Changes") : addPlayerMode === "EXISTING" ? (loadingPlayerCreate ? "Adding..." : "Add Existing Player") : (loadingPlayerCreate ? "Adding..." : "Add Player")}
             </button>
           </div>
         </div>
@@ -4456,12 +4412,7 @@ late-800 disabled:opacity-50 [color-scheme:dark]"
 
             <button
               type="button"
-              onClick={() => {
-                setTeamName("");
-                setTeamShortName("");
-                setError("");
-                setShowAddTeam(true);
-              }}
+              onClick={openAddTeamModal}
               className="h-10 rounded-xl border border-emerald-500/50 px-4 text-sm font-semibold text-emerald-400 transition 
 hover:bg-emerald-500/10 [color-scheme:dark]"
             >
@@ -4486,12 +4437,7 @@ hover:bg-emerald-500/10 [color-scheme:dark]"
 
               <button
                 type="button"
-                onClick={() => {
-                  setTeamName("");
-                  setTeamShortName("");
-                  setError("");
-                  setShowAddTeam(true);
-                }}
+                onClick={openAddTeamModal}
                 className="mt-5 rounded-xl bg-emerald-500 px-5 py-2.5 text-sm font-semibold text-slate-950 hover:bg-emerald-4
 00"
               >
@@ -4570,12 +4516,7 @@ hover:bg-emerald-500/10 [color-scheme:dark]"
 
               <button
                 type="button"
-                onClick={() => {
-                  setEditingPlayerId(null);
-                  resetPlayerForm();
-                  setError("");
-                  setShowAddPlayer(true);
-                }}
+                onClick={openAddPlayerModal}
                 className="h-10 rounded-xl bg-emerald-500 px-4 text-sm font-semibold text-slate-950 transition hover:bg-emerald-400"
               >
                 + Add Player
