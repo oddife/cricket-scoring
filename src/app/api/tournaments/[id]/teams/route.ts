@@ -62,8 +62,12 @@ export async function POST(
 ) {
   try {
     const { id: tournamentId } = await params;
-
     const body = await request.json();
+
+    const teamId =
+      typeof body.teamId === "string"
+        ? body.teamId.trim()
+        : "";
 
     const name =
       typeof body.name === "string"
@@ -75,19 +79,11 @@ export async function POST(
         ? body.shortName.trim()
         : "";
 
-    if (!name) {
-      return NextResponse.json(
-        { error: "Team name is required." },
-        { status: 400 },
-      );
-    }
-
-    const tournament =
-      await prisma.tournament.findUnique({
-        where: {
-          id: tournamentId,
-        },
-      });
+    const tournament = await prisma.tournament.findUnique({
+      where: {
+        id: tournamentId,
+      },
+    });
 
     if (!tournament) {
       return NextResponse.json(
@@ -96,8 +92,69 @@ export async function POST(
       );
     }
 
-    // Check whether this team is already attached
-    // to this tournament.
+    // Existing team mode: attach the selected global team directly.
+    // Do not require a team name when teamId is supplied.
+    if (teamId) {
+      const team = await prisma.team.findUnique({
+        where: {
+          id: teamId,
+        },
+      });
+
+      if (!team) {
+        return NextResponse.json(
+          { error: "Selected team not found." },
+          { status: 404 },
+        );
+      }
+
+      const existingMembership =
+        await prisma.tournamentTeam.findFirst({
+          where: {
+            tournamentId,
+            teamId: team.id,
+          },
+        });
+
+      if (existingMembership) {
+        return NextResponse.json(
+          {
+            error:
+              "This team is already in this tournament.",
+          },
+          { status: 409 },
+        );
+      }
+
+      const membership = await prisma.tournamentTeam.create({
+        data: {
+          tournamentId,
+          teamId: team.id,
+        },
+        include: {
+          team: {
+            include: {
+              _count: {
+                select: {
+                  players: true,
+                },
+              },
+            },
+          },
+        },
+      });
+
+      return NextResponse.json(membership, { status: 201 });
+    }
+
+    // New team mode.
+    if (!name) {
+      return NextResponse.json(
+        { error: "Team name is required." },
+        { status: 400 },
+      );
+    }
+
     const existingMembership =
       await prisma.tournamentTeam.findFirst({
         where: {
@@ -131,7 +188,7 @@ export async function POST(
       );
     }
 
-    // Re-use an existing team if the exact name exists.
+    // Re-use an existing global team if the exact name exists.
     let team = await prisma.team.findFirst({
       where: {
         name,
@@ -145,10 +202,7 @@ export async function POST(
           shortName: shortName || null,
         },
       });
-    } else if (
-      shortName &&
-      !team.shortName
-    ) {
+    } else if (shortName && !team.shortName) {
       team = await prisma.team.update({
         where: {
           id: team.id,
@@ -159,34 +213,27 @@ export async function POST(
       });
     }
 
-    const membership =
-      await prisma.tournamentTeam.create({
-        data: {
-          tournamentId,
-          teamId: team.id,
-        },
-        include: {
-          team: {
-            include: {
-              _count: {
-                select: {
-                  players: true,
-                },
+    const membership = await prisma.tournamentTeam.create({
+      data: {
+        tournamentId,
+        teamId: team.id,
+      },
+      include: {
+        team: {
+          include: {
+            _count: {
+              select: {
+                players: true,
               },
             },
           },
         },
-      });
+      },
+    });
 
-    return NextResponse.json(
-      membership,
-      { status: 201 },
-    );
+    return NextResponse.json(membership, { status: 201 });
   } catch (error) {
-    console.error(
-      "POST tournament team error:",
-      error,
-    );
+    console.error("POST tournament team error:", error);
 
     return NextResponse.json(
       { error: "Failed to create team." },
