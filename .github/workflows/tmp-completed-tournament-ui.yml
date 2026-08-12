@@ -10,7 +10,6 @@ permissions:
 
 jobs:
   fix:
-    if: !startsWith(github.event.head_commit.message, 'fix: completed tournament UI')
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -19,10 +18,13 @@ jobs:
         run: |
           python - <<'PY'
           from pathlib import Path
-          import re
 
           path = Path('src/app/page.tsx')
           text = path.read_text()
+
+          if 'status: "ACTIVE" | "COMPLETED";' in text and 'Winner: {tournament.winner.name}' in text:
+              print('UI fix already applied')
+              raise SystemExit(0)
 
           old_type = '''type Tournament = {
             id: string;
@@ -86,39 +88,6 @@ jobs:
           if marker not in text:
               raise SystemExit('Tournament metadata marker not found')
           text = text.replace(marker, replacement, 1)
-
-          old_stats = '''                      <div className="text-right text-xs text-slate-500">
-                        <div>
-                          {
-                            tournament
-                              .teams
-                              .length
-                          }{" "}
-                          teams
-                        </div>
-
-                        <div>
-                          {
-                            tournament
-                              ._count
-                              .matches
-                          }{" "}
-                          matches
-                        </div>
-                      </div>'''
-          new_stats = '''                      <div className="text-right text-xs text-slate-500">
-                        <div>
-                          {tournament.teams.length}{" "}
-                          teams
-                        </div>
-
-                        <div>
-                          {tournament._count.matches}{" "}
-                          matches
-                        </div>
-                      </div>'''
-          if old_stats in text:
-              text = text.replace(old_stats, new_stats, 1)
 
           path.write_text(text)
           PY
