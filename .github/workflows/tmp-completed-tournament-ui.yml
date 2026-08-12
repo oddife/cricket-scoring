@@ -1,0 +1,133 @@
+name: Temporary completed tournament UI fix
+
+on:
+  push:
+    branches:
+      - fix/completed-tournament-status-winner
+
+permissions:
+  contents: write
+
+jobs:
+  fix:
+    if: !startsWith(github.event.head_commit.message, 'fix: completed tournament UI')
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Update tournament list UI
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          import re
+
+          path = Path('src/app/page.tsx')
+          text = path.read_text()
+
+          old_type = '''type Tournament = {
+            id: string;
+            name: string;
+            season: string | null;
+            format: string;
+            startDate: string | null;
+            endDate: string | null;
+            teams: TournamentTeam[];
+            _count: {
+              matches: number;
+            };
+          };'''
+          new_type = '''type Tournament = {
+            id: string;
+            name: string;
+            season: string | null;
+            format: string;
+            startDate: string | null;
+            endDate: string | null;
+            status: "ACTIVE" | "COMPLETED";
+            winner: {
+              id: string;
+              name: string;
+              shortName: string | null;
+              logo: string | null;
+            } | null;
+            teams: TournamentTeam[];
+            _count: {
+              matches: number;
+            };
+          };'''
+          if old_type not in text:
+              raise SystemExit('Tournament type block not found')
+          text = text.replace(old_type, new_type, 1)
+
+          marker = '''                        <p className="mt-1 text-xs text-slate-500">
+                          {tournament.season
+                            ? `${tournament.season} ${String.fromCharCode(0x2022)} `
+                            : ""}
+                          {
+                            formatLabels[
+                              tournament.format
+                            ]
+                          }
+                        </p>'''
+          replacement = marker + '''
+
+                        {tournament.status === "COMPLETED" && (
+                          <div className="mt-2 flex flex-wrap items-center gap-2">
+                            <span className="rounded-full border border-emerald-500/30 bg-emerald-500/10 px-2.5 py-1 text-[11px] font-bold uppercase tracking-wide text-emerald-400">
+                              COMPLETED
+                            </span>
+                            {tournament.winner && (
+                              <span className="text-xs font-medium text-slate-300">
+                                Winner: {tournament.winner.name}
+                              </span>
+                            )}
+                          </div>
+                        )}'''
+          if marker not in text:
+              raise SystemExit('Tournament metadata marker not found')
+          text = text.replace(marker, replacement, 1)
+
+          old_stats = '''                      <div className="text-right text-xs text-slate-500">
+                        <div>
+                          {
+                            tournament
+                              .teams
+                              .length
+                          }{" "}
+                          teams
+                        </div>
+
+                        <div>
+                          {
+                            tournament
+                              ._count
+                              .matches
+                          }{" "}
+                          matches
+                        </div>
+                      </div>'''
+          new_stats = '''                      <div className="text-right text-xs text-slate-500">
+                        <div>
+                          {tournament.teams.length}{" "}
+                          teams
+                        </div>
+
+                        <div>
+                          {tournament._count.matches}{" "}
+                          matches
+                        </div>
+                      </div>'''
+          if old_stats in text:
+              text = text.replace(old_stats, new_stats, 1)
+
+          path.write_text(text)
+          PY
+
+      - name: Commit UI fix
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add src/app/page.tsx
+          git diff --cached --quiet && exit 0
+          git commit -m "fix: completed tournament UI"
+          git push
