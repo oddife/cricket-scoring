@@ -1,0 +1,71 @@
+name: Patch resume bowler state
+
+on:
+  push:
+    branches:
+      - fix/resume-bowler-rotation
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: fix/resume-bowler-rotation
+          fetch-depth: 0
+
+      - name: Patch resume-only bowler selection
+        shell: python
+        run: |
+          from pathlib import Path
+          p = Path("src/app/page.tsx")
+          s = p.read_text()
+          old = '''      const resumedCurrentBowlerId =
+        bowlingMode === "DOUBLE" &&
+        !liveOddOvers &&
+        resumedBowlerAId &&
+        resumedBowlerBId
+          ? currentOverDeliveriesFromData.length % 2 === 0
+            ? resumedBowlerAId
+            : resumedBowlerBId
+          : resumedBowlerAId || resumedBowlerBId;
+
+      setLiveBowlerId(resumedCurrentBowlerId);'''
+          new = '''      // Reconstruct only the frontend bowler state on resume.
+      // Normal overs alternate by delivery count. An odd final over uses
+      // its single bowler. The backend remains unchanged.
+      const isOddFinalOver =
+        Boolean(match.oddOvers) &&
+        Number(match.oversPerInnings ?? 0) % 2 === 1 &&
+        currentOverNumberFromData === Number(match.oversPerInnings ?? 0);
+
+      const resumedCurrentBowlerId =
+        isOddFinalOver
+          ? resumedBowlerAId || resumedBowlerBId
+          : resumedBowlerAId && resumedBowlerBId
+            ? currentOverDeliveriesFromData.length % 2 === 0
+              ? resumedBowlerAId
+              : resumedBowlerBId
+            : resumedBowlerAId || resumedBowlerBId;
+
+      setLiveBowlerId(resumedCurrentBowlerId);'''
+          if old not in s:
+              raise SystemExit("Expected resume bowler block was not found")
+          p.write_text(s.replace(old, new, 1))
+
+      - name: Commit patch
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add src/app/page.tsx
+          git commit -m "fix: restore bowler rotation when resuming match"
+          git push origin fix/resume-bowler-rotation
+
+      - name: Remove temporary workflow
+        run: |
+          git rm .github/workflows/patch-resume-bowler.yml
+          git commit -m "chore: remove temporary resume bowler patch workflow"
+          git push origin fix/resume-bowler-rotation
