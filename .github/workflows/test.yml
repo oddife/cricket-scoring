@@ -6,6 +6,7 @@ on:
       - main
       - fix/league-live-scorecard
       - fix/team-player-roster-removal
+      - fix/completed-tournament-status-winner
   pull_request:
 
 permissions:
