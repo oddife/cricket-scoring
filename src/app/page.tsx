@@ -114,7 +114,7 @@ type ScorecardMatch = {
   innings: Array<{ id: string; inningsNumber: number; totalRuns: number; wickets: number; legalBalls: number; target: number | null; battingTeamId: string; bowlingTeamId: string; deliveries: Array<{
     id: string; overNumber: number; ballNumber: number; bowlerId: string; strikerId: string; nonStrikerId: string; runsBat: number; runsExtra: number; runsTotal: number; isLegal: boolean; extraType: string | null; isWicket: boolean;
     striker: { id: string; name: string; jerseyNumber: number | null }; bowler: { id: string; name: string; jerseyNumber: number | null };
-    wicket: { type: string; dismissedPlayerId: string; bowlerId: string | null } | null;
+    wicket: { type: string; dismissedPlayerId: string; bowlerId: string | null; fielderId: string | null } | null;
   }> }>;
 };
 
@@ -5995,6 +5995,22 @@ r-emerald-500 [color-scheme:dark]"
               const teamName = (id: string) => id === match.teamA.id ? match.teamA.name : match.teamB.name;
               const teamShortName = (id: string) => id === match.teamA.id ? (match.teamA.shortName ?? match.teamA.name) : (match.teamB.shortName ?? match.teamB.name);
               const playerName = (id: string) => match.players.find((item) => item.playerId === id)?.player.name ?? "Player";
+              const dismissalText = (wicket: NonNullable<(typeof match.innings)[number]["deliveries"][number]["wicket"]>) => {
+                const bowler = wicket.bowlerId ? playerName(wicket.bowlerId) : "Bowler";
+                const fielder = wicket.fielderId ? playerName(wicket.fielderId) : "";
+                switch (wicket.type) {
+                  case "BOWLED": return `b ${bowler}`;
+                  case "CAUGHT": return fielder ? `c ${fielder} b ${bowler}` : `c b ${bowler}`;
+                  case "LBW": return `lbw b ${bowler}`;
+                  case "RUN_OUT": return fielder ? `run out (${fielder})` : "run out";
+                  case "STUMPED": return fielder ? `st ${fielder} b ${bowler}` : `st b ${bowler}`;
+                  case "HIT_WICKET": return `hit wicket b ${bowler}`;
+                  case "RETIRED_OUT": return "retired out";
+                  case "RETIRED_HURT": return "retired hurt";
+                  case "OVER_FENCE": return "over fence";
+                  default: return "out";
+                }
+              };
               const teamAInnings = match.innings.filter((item) => item.battingTeamId === match.teamA.id).sort((a, b) => a.inningsNumber - b.inningsNumber);
               const teamBInnings = match.innings.filter((item) => item.battingTeamId === match.teamB.id).sort((a, b) => a.inningsNumber - b.inningsNumber);
               const scoreText = (inning: (typeof match.innings)[number] | undefined) => inning ? `${inning.totalRuns}/${inning.wickets}` : "-/-";
@@ -6076,7 +6092,7 @@ r-emerald-500 [color-scheme:dark]"
                       for (const x of i.deliveries) {
                         const a = bat.get(x.strikerId) || { r: 0, b: 0, f: 0, s: 0, out: false, d: "" };
                         a.r += x.runsBat; if (x.isLegal) a.b++; if (x.runsBat === 4) a.f++; if (x.runsBat === 6) a.s++;
-                        if (x.isWicket && x.wicket?.dismissedPlayerId === x.strikerId) { a.out = true; a.d = x.wicket.type.replaceAll("_", " "); fall.push({ p: playerName(x.strikerId), score: score + x.runsTotal, over: `${x.overNumber}.${x.ballNumber}` }); }
+                        if (x.isWicket && x.wicket?.dismissedPlayerId === x.strikerId) { a.out = true; a.d = dismissalText(x.wicket); fall.push({ p: playerName(x.strikerId), score: score + x.runsTotal, over: `${x.overNumber}.${x.ballNumber}` }); }
                         bat.set(x.strikerId, a);
                         const q = bowl.get(x.bowlerId) || { b: 0, r: 0, w: 0 }; if (x.isLegal) q.b++; q.r += x.runsTotal; if (x.isWicket && x.wicket?.bowlerId === x.bowlerId) q.w++; bowl.set(x.bowlerId, q); score += x.runsTotal;
                       }
