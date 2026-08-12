@@ -412,6 +412,7 @@ const [resumingMatchId, setResumingMatchId] =
   type LiveInningsHistory = {
     inningsNumber: number;
     totalRuns: number;
+    wickets?: number;
     battingTeamId: string;
     target: number | null;
   };
@@ -1413,7 +1414,7 @@ const [resumingMatchId, setResumingMatchId] =
       setNextOverBowlerBId("");
       setPageMode("LIVE_SCORING");
 
-      await refreshLiveInnings(currentInnings.id);
+      await refreshLiveInnings(currentInnings.id, match.id);
     } catch (err) {
       console.error(err);
       setError(
@@ -1956,7 +1957,7 @@ const [resumingMatchId, setResumingMatchId] =
         oversPerInnings % 2 === 1,
       );
       setPageMode("LIVE_SCORING");
-      void refreshLiveInnings(data.id);
+      void refreshLiveInnings(data.id, createdMatchId);
     } catch (err) {
       console.error(err);
 
@@ -2080,7 +2081,7 @@ const [resumingMatchId, setResumingMatchId] =
       setNextInningsBowlerBId("");
       setLiveTab("LIVE");
       setPageMode("LIVE_SCORING");
-      void refreshLiveInnings(data.id);
+      void refreshLiveInnings(data.id, createdMatchId);
     } catch (err) {
       console.error(err);
       setError(
@@ -2095,7 +2096,7 @@ const [resumingMatchId, setResumingMatchId] =
   // Live scoring
   // ---------------------------------------------------------
 
-  async function refreshLiveInnings(inningsId = liveInningsId) {
+  async function refreshLiveInnings(inningsId = liveInningsId, matchId = createdMatchId) {
     if (!inningsId) return;
 
     try {
@@ -2117,6 +2118,31 @@ const [resumingMatchId, setResumingMatchId] =
         : [];
 
       setLiveDeliveries(deliveries);
+
+      if (matchId) {
+        try {
+          const matchResponse = await fetch(`/api/matches/${matchId}`, { cache: "no-store" });
+          const matchData = await matchResponse.json();
+          const matchInnings = Array.isArray(matchData?.match?.innings)
+            ? matchData.match.innings
+            : Array.isArray(matchData?.innings)
+              ? matchData.innings
+              : [];
+          if (matchInnings.length > 0) {
+            setLiveInningsHistory(
+              matchInnings.map((item: { inningsNumber: number; totalRuns: number; wickets?: number; battingTeamId: string; target?: number | null }) => ({
+                inningsNumber: Number(item.inningsNumber),
+                totalRuns: Number(item.totalRuns ?? 0),
+                wickets: Number(item.wickets ?? 0),
+                battingTeamId: item.battingTeamId,
+                target: item.target ?? null,
+              })),
+            );
+          }
+        } catch (historyError) {
+          console.error("Failed to refresh innings history:", historyError);
+        }
+      }
       setLiveBattingTeamId(innings.battingTeamId ?? "");
       setLiveBowlingTeamId(innings.bowlingTeamId ?? "");
       setLiveRuns(Number(innings.totalRuns ?? 0));
@@ -2533,7 +2559,7 @@ const [resumingMatchId, setResumingMatchId] =
       }
 
       setLiveUndoAvailable(true);
-      await refreshLiveInnings(liveInningsId);
+      await refreshLiveInnings(liveInningsId, createdMatchId);
 
       setShowWicketPanel(false);
       setShowCustomDeliveryPanel(false);
@@ -2563,7 +2589,7 @@ const [resumingMatchId, setResumingMatchId] =
       const data = await response.json();
       if (!response.ok) throw new Error(data?.error || "Failed to undo action.");
       setLiveUndoAvailable(false);
-      await refreshLiveInnings(liveInningsId);
+      await refreshLiveInnings(liveInningsId, createdMatchId);
     } catch (err) { setError(err instanceof Error ? err.message : "Failed to undo action."); }
     finally { setLiveLoading(false); }
   }
@@ -2582,7 +2608,7 @@ const [resumingMatchId, setResumingMatchId] =
       const data = await response.json();
       if (!response.ok) throw new Error(data?.error || "Failed to change player.");
       setManualActionMenu(null); setLiveUndoAvailable(true);
-      await refreshLiveInnings(liveInningsId);
+      await refreshLiveInnings(liveInningsId, createdMatchId);
     } catch (err) { setError(err instanceof Error ? err.message : "Failed to change player."); }
     finally { setLiveLoading(false); }
   }
@@ -3072,11 +3098,11 @@ const [resumingMatchId, setResumingMatchId] =
                   <div className="grid grid-cols-[minmax(42px,auto)_minmax(0,1fr)_auto_minmax(0,1fr)_minmax(42px,auto)] items-center gap-1 px-1 text-sm">
                     <span className="truncate font-black text-blue-700">{selectedTournament?.teams.find((item) => item.team.id === teamAId)?.team.shortName ?? "T1"}</span>
                     <div className={`grid min-w-0 ${inningsPerMatch === 4 ? "grid-cols-2" : "grid-cols-1"}`}>
-                      {[1, ...(inningsPerMatch === 4 ? [3] : [])].map((inningNumber) => { const history = liveInningsHistory.find((item) => item.inningsNumber === inningNumber); const isCurrent = liveInningsNumber === inningNumber && liveBattingTeamId === teamAId; const value = isCurrent ? `${liveRuns}/${liveWickets}` : history?.battingTeamId === teamAId ? `${history.totalRuns}/-` : "- / -"; return <div key={`live-a-${inningNumber}`} className="text-center"><div className="whitespace-nowrap font-black text-slate-900">{value}</div><div className="text-[10px] font-medium text-slate-400">({inningNumber === 1 ? 1 : 2})</div></div>; })}
+                      {[1, ...(inningsPerMatch === 4 ? [3] : [])].map((inningNumber) => { const history = liveInningsHistory.find((item) => item.inningsNumber === inningNumber); const isCurrent = liveInningsNumber === inningNumber && liveBattingTeamId === teamAId; const value = isCurrent ? `${liveRuns}/${liveWickets}` : history?.battingTeamId === teamAId ? `${history.totalRuns}/${history.wickets ?? 0}` : "-/-"; return <div key={`live-a-${inningNumber}`} className="text-center"><div className="whitespace-nowrap font-black text-slate-900">{value}</div><div className="text-[10px] font-medium text-slate-400">({inningNumber === 1 ? 1 : 2})</div></div>; })}
                     </div>
                     <span className="px-1 text-xs font-black text-slate-400">VS</span>
                     <div className={`grid min-w-0 ${inningsPerMatch === 4 ? "grid-cols-2" : "grid-cols-1"}`}>
-                      {[2, ...(inningsPerMatch === 4 ? [4] : [])].map((inningNumber) => { const history = liveInningsHistory.find((item) => item.inningsNumber === inningNumber); const isCurrent = liveInningsNumber === inningNumber && liveBattingTeamId === teamBId; const value = isCurrent ? `${liveRuns}/${liveWickets}` : history?.battingTeamId === teamBId ? `${history.totalRuns}/-` : "- / -"; return <div key={`live-b-${inningNumber}`} className="text-center"><div className="whitespace-nowrap font-black text-slate-900">{value}</div><div className="text-[10px] font-medium text-slate-400">({inningNumber === 2 ? 1 : 2})</div></div>; })}
+                      {[2, ...(inningsPerMatch === 4 ? [4] : [])].map((inningNumber) => { const history = liveInningsHistory.find((item) => item.inningsNumber === inningNumber); const isCurrent = liveInningsNumber === inningNumber && liveBattingTeamId === teamBId; const value = isCurrent ? `${liveRuns}/${liveWickets}` : history?.battingTeamId === teamBId ? `${history.totalRuns}/${history.wickets ?? 0}` : "-/-"; return <div key={`live-b-${inningNumber}`} className="text-center"><div className="whitespace-nowrap font-black text-slate-900">{value}</div><div className="text-[10px] font-medium text-slate-400">({inningNumber === 2 ? 1 : 2})</div></div>; })}
                     </div>
                     <span className="truncate text-right font-black text-emerald-700">{selectedTournament?.teams.find((item) => item.team.id === teamBId)?.team.shortName ?? "T2"}</span>
                   </div>
@@ -5970,7 +5996,7 @@ r-emerald-500 [color-scheme:dark]"
               const playerName = (id: string) => match.players.find((item) => item.playerId === id)?.player.name ?? "Player";
               const teamAInnings = match.innings.filter((item) => item.battingTeamId === match.teamA.id).sort((a, b) => a.inningsNumber - b.inningsNumber);
               const teamBInnings = match.innings.filter((item) => item.battingTeamId === match.teamB.id).sort((a, b) => a.inningsNumber - b.inningsNumber);
-              const scoreText = (inning: (typeof match.innings)[number] | undefined) => inning ? `${inning.totalRuns}/${inning.wickets}` : "- / -";
+              const scoreText = (inning: (typeof match.innings)[number] | undefined) => inning ? `${inning.totalRuns}/${inning.wickets}` : "-/-";
               const orderedInnings = [...match.innings].sort((a, b) => a.inningsNumber - b.inningsNumber);
               const finalInning = orderedInnings[orderedInnings.length - 1];
               const targetInning = match.innings.find((item) => item.target != null) ?? finalInning;
