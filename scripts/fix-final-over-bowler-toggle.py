@@ -3,37 +3,63 @@ from pathlib import Path
 p = Path('src/app/page.tsx')
 s = p.read_text(encoding='utf-8-sig')
 
-old = '''        if (bowlingMode === "DOUBLE") {
-          setLiveBowlerId(
-            liveBowlerId === liveBowlerAId
-              ? liveBowlerBId
-              : liveBowlerAId,
-          );
-        }
+old = '''      const refreshedBowlerAId =
+        observedBowlers[0] ??
+        innings.currentBowlerAId ??
+        "";
+      const refreshedBowlerBId =
+        observedBowlers[1] ??
+        innings.currentBowlerBId ??
+        liveBowlerBId;
+
+      setLiveBowlerAId(refreshedBowlerAId);
+      setLiveBowlerBId(refreshedBowlerBId);
+
+      const refreshedCurrentBowlerId =
+        bowlingMode === "DOUBLE" &&
+        refreshedOverDeliveries.length > 0
+          ? refreshedOverDeliveries.length % 2 === 0
+            ? refreshedBowlerAId
+            : refreshedBowlerBId
+          : refreshedBowlerAId;
+
+      setLiveBowlerId(refreshedCurrentBowlerId);
 '''
 
-new = '''        if (bowlingMode === "DOUBLE") {
-          const currentOverIsOddFinalOver =
-            liveOddOvers &&
-            liveCurrentOver >= oversPerInnings;
+new = '''      const refreshedOverIsOddFinalOver =
+        bowlingMode === "DOUBLE" &&
+        Boolean(innings.match?.oddOvers) &&
+        refreshedOverNumber >= Number(innings.match?.oversPerInnings ?? 0);
 
-          if (currentOverIsOddFinalOver) {
-            // Odd final over is intentionally bowled by the single
-            // bowler selected for the over. Do not toggle to empty B.
-            setLiveBowlerId(liveBowlerAId || liveBowlerId);
-          } else {
-            setLiveBowlerId(
-              liveBowlerId === liveBowlerAId
-                ? liveBowlerBId
-                : liveBowlerAId,
-            );
-          }
-        }
+      const refreshedBowlerAId =
+        observedBowlers[0] ??
+        innings.currentBowlerAId ??
+        "";
+      const refreshedBowlerBId = refreshedOverIsOddFinalOver
+        ? ""
+        : observedBowlers[1] ??
+          innings.currentBowlerBId ??
+          liveBowlerBId;
+
+      setLiveBowlerAId(refreshedBowlerAId);
+      setLiveBowlerBId(refreshedBowlerBId);
+
+      const refreshedCurrentBowlerId =
+        refreshedOverIsOddFinalOver
+          ? refreshedBowlerAId
+          : bowlingMode === "DOUBLE" &&
+              refreshedOverDeliveries.length > 0
+            ? refreshedOverDeliveries.length % 2 === 0
+              ? refreshedBowlerAId
+              : refreshedBowlerBId
+            : refreshedBowlerAId;
+
+      setLiveBowlerId(refreshedCurrentBowlerId);
 '''
 
 if old not in s:
-    raise SystemExit('double-bowler toggle block not found')
+    raise SystemExit('refresh bowler state block not found')
 
 s = s.replace(old, new, 1)
 p.write_text(s, encoding='utf-8')
-print('final odd-over bowler toggle fixed')
+print('refresh odd final over bowler state fixed')
