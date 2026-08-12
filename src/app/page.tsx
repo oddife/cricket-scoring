@@ -371,6 +371,8 @@ const [resumingMatchId, setResumingMatchId] =
     useState("");
   const [wicketType, setWicketType] =
     useState("BOWLED");
+  const [fielderId, setFielderId] = useState("");
+  const [liveWicketDetailsByPlayerId, setLiveWicketDetailsByPlayerId] = useState<Record<string, { type: string; bowlerId: string | null; fielderId: string | null }>>({});
   const [showCustomDeliveryPanel, setShowCustomDeliveryPanel] =
     useState(false);
   const [customDeliveryType, setCustomDeliveryType] =
@@ -403,7 +405,7 @@ const [resumingMatchId, setResumingMatchId] =
     bowler: { id: string; name: string; jerseyNumber: number | null };
     striker: { id: string; name: string; jerseyNumber: number | null };
     nonStriker: { id: string; name: string; jerseyNumber: number | null };
-    wicket: { type: string; dismissedPlayerId: string; bowlerId: string | null } | null;
+    wicket: { type: string; dismissedPlayerId: string; bowlerId: string | null; fielderId?: string | null } | null;
   };
 
   const [liveDeliveries, setLiveDeliveries] =
@@ -2298,6 +2300,7 @@ const [resumingMatchId, setResumingMatchId] =
     setDismissedPlayerId(liveStrikerId);
     setRunOutDismissedEnd("STRIKER");
     setReplacementPlayerId("");
+    setFielderId("");
     setWicketType(extraType ? "RUN_OUT" : "BOWLED");
     setShowWicketPanel(true);
   }
@@ -2369,6 +2372,7 @@ const [resumingMatchId, setResumingMatchId] =
     wicketType?: string;
     dismissedPlayerId?: string;
     replacementPlayerId?: string;
+    fielderId?: string;
   }) {
     if (!liveInningsId) {
       setError("Live innings is not available.");
@@ -2421,6 +2425,17 @@ const [resumingMatchId, setResumingMatchId] =
       setLiveRuns(
         Number(data.innings?.totalRuns ?? data.totalRuns ?? liveRuns + totalRuns),
       );
+      if (input.isWicket && input.dismissedPlayerId) {
+        setLiveWicketDetailsByPlayerId((current) => ({
+          ...current,
+          [input.dismissedPlayerId!]: {
+            type: input.wicketType ?? "OUT",
+            bowlerId: liveBowlerId || null,
+            fielderId: input.fielderId ?? null,
+          },
+        }));
+      }
+
       setLiveWickets(
         Number(
           data.innings?.wickets ??
@@ -2962,6 +2977,25 @@ const [resumingMatchId, setResumingMatchId] =
       return String(delivery.runsTotal);
     };
 
+    const liveDismissalText = (playerId: string) => {
+      const detail = liveWicketDetailsByPlayerId[playerId];
+      if (!detail) return "OUT";
+      const playerName = (id: string | null) =>
+        liveBowlingPlayers.find((player) => player.id === id)?.name ?? "Player";
+      const bowler = playerName(detail.bowlerId);
+      const fielder = detail.fielderId ? playerName(detail.fielderId) : "";
+      switch (detail.type) {
+        case "BOWLED": return `b ${bowler}`;
+        case "CAUGHT": return fielder ? `c ${fielder}   b ${bowler}` : `c b ${bowler}`;
+        case "LBW": return `lbw b ${bowler}`;
+        case "RUN_OUT": return fielder ? `run out (${fielder})` : "run out";
+        case "STUMPED": return fielder ? `st ${fielder}   b ${bowler}` : `st b ${bowler}`;
+        case "HIT_WICKET": return `hit wicket b ${bowler}`;
+        case "OVER_FENCE": return "over fence";
+        default: return "OUT";
+      }
+    };
+
     const recordButton = (label: string, className: string, action: () => void, disabled = false) => (
       <button
         type="button"
@@ -3172,7 +3206,10 @@ const [resumingMatchId, setResumingMatchId] =
                           <div key={stat.player.id} className={`grid grid-cols-[1fr_50px_50px_45px_45px_65px] items-center gap-2 rounded-lg px-2 py-2 text-sm ${stat.player.id === liveStrikerId ? "bg-emerald-50" : ""}`}>
                             <div className="flex min-w-0 items-center gap-2">
                               <span className={`flex h-7 w-7 shrink-0 items-center justify-center rounded-full text-xs font-bold text-white [color-scheme:dark] ${stat.dismissed ? "bg-red-600" : "bg-emerald-600"}`}>{stat.player.jerseyNumber ?? ""}</span>
-                              <span className="truncate font-bold">{stat.player.name}{stat.player.id === liveStrikerId ? " *" : ""}{stat.dismissed ? " OUT" : ""}</span>
+                              <div className="min-w-0">
+                                <span className="block truncate font-bold">{stat.player.name}{stat.player.id === liveStrikerId ? " *" : ""}{stat.dismissed ? " OUT" : ""}</span>
+                                <span className="block truncate whitespace-pre text-[9px] text-slate-400">{stat.dismissed ? liveDismissalText(stat.player.id) : "NOT OUT"}</span>
+                              </div>
                             </div>
                             <b>{stat.runs}</b><span>{stat.balls}</span><span>{stat.fours}</span><span>{stat.sixes}</span><span>{stat.strikeRate}</span>
                           </div>
@@ -3479,7 +3516,18 @@ const [resumingMatchId, setResumingMatchId] =
                 </p>
               )}
               <div className="mt-5 space-y-4">
-                <div><label htmlFor="wicketType" className="mb-2 block text-sm font-semibold">Wicket type</label><select id="wicketType" value={wicketType} onChange={(event) => { const value = event.target.value; setWicketType(value); if (value !== "RUN_OUT") { setRunOutDismissedEnd("STRIKER"); setDismissedPlayerId(liveStrikerId); } else { setRunOutDismissedEnd("STRIKER"); setDismissedPlayerId(liveStrikerId); } setReplacementPlayerId(""); }} className="h-12 w-full rounded-lg border border-slate-700 bg-slate-950 px-3 text-white [color-scheme:dark] [color-scheme:dark]"><option value="BOWLED" className="bg-slate-950 text-white">Bowled</option><option value="CAUGHT" className="bg-slate-950 text-white">Caught</option><option value="LBW" className="bg-slate-950 text-white">LBW</option><option value="RUN_OUT" className="bg-slate-950 text-white">Run Out</option><option value="STUMPED" className="bg-slate-950 text-white">Stumped</option><option value="HIT_WICKET" className="bg-slate-950 text-white">Hit Wicket</option><option value="OVER_FENCE" className="bg-slate-950 text-white">Over Fence</option></select></div>
+                <div><label htmlFor="wicketType" className="mb-2 block text-sm font-semibold">Wicket type</label><select id="wicketType" value={wicketType} onChange={(event) => { const value = event.target.value; setWicketType(value); if (value !== "RUN_OUT") { setRunOutDismissedEnd("STRIKER"); setDismissedPlayerId(liveStrikerId); } else { setRunOutDismissedEnd("STRIKER"); setDismissedPlayerId(liveStrikerId); } setReplacementPlayerId(""); setFielderId(""); }} className="h-12 w-full rounded-lg border border-slate-700 bg-slate-950 px-3 text-white [color-scheme:dark] [color-scheme:dark]"><option value="BOWLED" className="bg-slate-950 text-white">Bowled</option><option value="CAUGHT" className="bg-slate-950 text-white">Caught</option><option value="LBW" className="bg-slate-950 text-white">LBW</option><option value="RUN_OUT" className="bg-slate-950 text-white">Run Out</option><option value="STUMPED" className="bg-slate-950 text-white">Stumped</option><option value="HIT_WICKET" className="bg-slate-950 text-white">Hit Wicket</option><option value="OVER_FENCE" className="bg-slate-950 text-white">Over Fence</option></select></div>
+                {(wicketType === "CAUGHT" || wicketType === "RUN_OUT" || wicketType === "STUMPED") && (
+                  <div>
+                    <label htmlFor="fielderPlayer" className="mb-2 block text-sm font-semibold">{wicketType === "CAUGHT" ? "Caught by" : wicketType === "STUMPED" ? "Stumped by" : "Run out by"}</label>
+                    <select id="fielderPlayer" value={fielderId} onChange={(event) => setFielderId(event.target.value)} className="h-12 w-full rounded-lg border border-slate-700 bg-slate-950 px-3 text-white [color-scheme:dark]">
+                      <option value="">Select player</option>
+                      {liveBowlingPlayers.map((player) => (
+                        <option key={player.id} value={player.id}>{player.name}</option>
+                      ))}
+                    </select>
+                  </div>
+                )}
                 {wicketType === "RUN_OUT" && (
                   <div>
                     <p className="mb-2 block text-sm font-semibold">Who was run out?</p>
@@ -3497,7 +3545,7 @@ const [resumingMatchId, setResumingMatchId] =
                 )}
                 <div><label htmlFor="replacementPlayer" className="mb-2 block text-sm font-semibold">Replacement batsman</label><select id="replacementPlayer" value={replacementPlayerId} onChange={(event) => setReplacementPlayerId(event.target.value)} className="h-12 w-full rounded-lg border border-slate-700 bg-slate-950 px-3 text-white [color-scheme:dark] [color-scheme:dark]"><option value="">Select replacement</option>{nextBatsmen.filter((player) => player.id !== dismissedPlayerId).map((player) => <option key={player.id} value={player.id}>{player.name}</option>)}</select></div>
               </div>
-              <div className="mt-6 grid grid-cols-2 gap-3"><button type="button" onClick={() => { setShowWicketPanel(false); setPendingWicketExtraType(null); setPendingWicketExtraRuns(0); setReplacementPlayerId(""); }} className="h-12 rounded-lg border border-slate-300 font-semibold [color-scheme:dark]">Cancel</button><button type="button" disabled={!replacementPlayerId || liveLoading} onClick={() => void recordLiveDelivery({ isWicket: true, wicketType, dismissedPlayerId, replacementPlayerId, ...(pendingWicketExtraType ? { runsExtra: pendingWicketExtraRuns, extraType: pendingWicketExtraType } : {}) })} className="h-12 rounded-lg bg-red-500 font-bold text-white disabled:opacity-40 [color-scheme:dark]">Confirm Wicket</button></div>
+              <div className="mt-6 grid grid-cols-2 gap-3"><button type="button" onClick={() => { setShowWicketPanel(false); setPendingWicketExtraType(null); setPendingWicketExtraRuns(0); setReplacementPlayerId(""); setFielderId(""); }} className="h-12 rounded-lg border border-slate-300 font-semibold [color-scheme:dark]">Cancel</button><button type="button" disabled={!replacementPlayerId || liveLoading || ((wicketType === "CAUGHT" || wicketType === "RUN_OUT" || wicketType === "STUMPED") && !fielderId)} onClick={() => void recordLiveDelivery({ isWicket: true, wicketType, dismissedPlayerId, replacementPlayerId, ...(fielderId ? { fielderId } : {}), ...(pendingWicketExtraType ? { runsExtra: pendingWicketExtraRuns, extraType: pendingWicketExtraType } : {}) })} className="h-12 rounded-lg bg-red-500 font-bold text-white disabled:opacity-40 [color-scheme:dark]">Confirm Wicket</button></div>
             </div>
           </div>
         )}
