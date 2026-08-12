@@ -81,16 +81,38 @@ jobs:
               'cancel wicket reset',
           )
 
+          # The completed-match scorecard patch may already have added fielderId.
+          # Only apply that type change if the old type is still present.
+          old_type = 'wicket: { type: string; dismissedPlayerId: string; bowlerId: string | null } | null;'
+          new_type = 'wicket: { type: string; dismissedPlayerId: string; bowlerId: string | null; fielderId: string | null } | null;'
+          if old_type in text:
+              text = text.replace(old_type, new_type, 1)
+
+          old_detail = 'a.out = true; a.d = x.wicket.type.replaceAll("_", " "); fall.push'
+          new_detail = 'a.out = true; a.d = `${x.wicket.type.replaceAll("_", " ")}${x.wicket.fielderId ? ` - ${playerName(x.wicket.fielderId)}` : ""}`; fall.push'
+          if old_detail in text:
+              text = text.replace(old_detail, new_detail, 1)
+
+          # Live delivery data needs the fielder id as well so the live scorecard
+          # can render the same dismissal notation as the completed scorecard.
           replace_once(
-              'wicket: { type: string; dismissedPlayerId: string; bowlerId: string | null } | null;',
-              'wicket: { type: string; dismissedPlayerId: string; bowlerId: string | null; fielderId: string | null } | null;',
-              'scorecard wicket type',
+              '    wicket: { type: string; dismissedPlayerId: string; bowlerId: string | null } | null;\n  };',
+              '    wicket: { type: string; dismissedPlayerId: string; bowlerId: string | null; fielderId: string | null } | null;\n  };',
+              'live delivery wicket type',
           )
 
+          delivery_label = '''    const deliveryLabel = (delivery: LiveDeliveryView) => {\n      if (delivery.isWicket) return "W";\n      if (delivery.extraType === "WIDE") return `Wd${delivery.runsExtra || 1}`;\n      if (delivery.extraType === "NO_BALL") return `Nb${delivery.runsExtra || 1}`;\n      if (delivery.extraType === "BYE") return `B${delivery.runsExtra || 1}`;\n      if (delivery.extraType === "LEG_BYE") return `Lb${delivery.runsExtra || 1}`;\n      return String(delivery.runsTotal);\n    };'''
+          dismissal_helper = delivery_label + '''\n\n    const liveDismissalText = (delivery: LiveDeliveryView) => {\n      if (!delivery.wicket) return "";\n      const bowler = delivery.wicket.bowlerId\n        ? liveBowlingPlayers.find((player) => player.id === delivery.wicket!.bowlerId)?.name ?? "Bowler"\n        : "Bowler";\n      const fielder = delivery.wicket.fielderId\n        ? liveBowlingPlayers.find((player) => player.id === delivery.wicket!.fielderId)?.name ?? ""\n        : "";\n      switch (delivery.wicket.type) {\n        case "BOWLED": return `b ${bowler}`;\n        case "CAUGHT": return fielder ? `c ${fielder}   b ${bowler}` : `c b ${bowler}`;\n        case "LBW": return `lbw b ${bowler}`;\n        case "RUN_OUT": return fielder ? `run out (${fielder})` : "run out";\n        case "STUMPED": return fielder ? `st ${fielder}   b ${bowler}` : `st b ${bowler}`;\n        case "HIT_WICKET": return `hit wicket b ${bowler}`;\n        case "RETIRED_OUT": return "retired out";\n        case "RETIRED_HURT": return "retired hurt";\n        case "OVER_FENCE": return "over fence";\n        default: return "out";\n      }\n    };'''
+          replace_once(delivery_label, dismissal_helper, 'live dismissal formatter')
+
+          old_stats = '''      return {\n        player,\n        runs,\n        balls: balls.length,\n        fours,\n        sixes,\n        strikeRate: balls.length\n          ? ((runs / balls.length) * 100).toFixed(2)\n          : "0.00",\n        dismissed: dismissedIds.has(player.id),\n      };'''
+          new_stats = '''      const dismissalDelivery = liveDeliveries.find(\n        (delivery) =>\n          delivery.wicket?.dismissedPlayerId === player.id,\n      );\n      return {\n        player,\n        runs,\n        balls: balls.length,\n        fours,\n        sixes,\n        strikeRate: balls.length\n          ? ((runs / balls.length) * 100).toFixed(2)\n          : "0.00",\n        dismissed: dismissedIds.has(player.id),\n        dismissal: dismissalDelivery ? liveDismissalText(dismissalDelivery) : "",\n      };'''
+          replace_once(old_stats, new_stats, 'live batting dismissal stats')
+
           replace_once(
-              'a.out = true; a.d = x.wicket.type.replaceAll("_", " "); fall.push',
-              'a.out = true; a.d = `${x.wicket.type.replaceAll("_", " ")}${x.wicket.fielderId ? ` - ${playerName(x.wicket.fielderId)}` : ""}`; fall.push',
-              'scorecard dismissal detail',
+              '<span className="truncate font-bold">{stat.player.name}{stat.player.id === liveStrikerId ? " *" : ""}{stat.dismissed ? " OUT" : ""}</span>',
+              '<div className="min-w-0"><span className="truncate font-bold">{stat.player.name}{stat.player.id === liveStrikerId ? " *" : ""}</span><p className="whitespace-pre text-[9px] text-slate-400">{stat.dismissed ? stat.dismissal : "NOT OUT"}</p></div>',
+              'live batter dismissal display',
           )
 
           page.write_text(text, encoding='utf-8')
@@ -99,23 +121,32 @@ jobs:
           text = scoring.read_text(encoding='utf-8')
           old = '''    if (\n      input.replacementPlayerId ===\n      input.dismissedPlayerId\n    ) {\n      throw new Error(\n        "Replacement player cannot be the dismissed player.",\n      );\n    }'''
           new = '''    if (\n      input.replacementPlayerId ===\n      input.dismissedPlayerId\n    ) {\n      throw new Error(\n        "Replacement player cannot be the dismissed player.",\n      );\n    }\n\n    const fielderRequired =\n      input.wicketType === "CAUGHT" ||\n      input.wicketType === "RUN_OUT" ||\n      input.wicketType === "STUMPED";\n\n    if (fielderRequired && !input.fielderId) {\n      throw new Error(\n        "This dismissal requires the fielding player involved.",\n      );\n    }\n\n    if (input.fielderId) {\n      const fielder = await prisma.matchPlayer.findFirst({\n        where: {\n          matchId: innings.matchId,\n          teamId: innings.bowlingTeamId,\n          playerId: input.fielderId,\n        },\n        select: { playerId: true, isWicketKeeper: true },\n      });\n\n      if (!fielder) {\n        throw new Error(\n          "Fielder is not a match player for the bowling team.",\n        );\n      }\n\n      if (input.wicketType === "STUMPED" && !fielder.isWicketKeeper) {\n        throw new Error(\n          "A stumping must be credited to the wicketkeeper.",\n        );\n      }\n    }'''
-          if old not in text:
-              raise SystemExit('missing scoring wicket validation marker')
-          scoring.write_text(text.replace(old, new, 1), encoding='utf-8')
+          if old in text:
+              scoring.write_text(text.replace(old, new, 1), encoding='utf-8')
 
           test = Path('src/lib/scoring.test.ts')
           text = test.read_text(encoding='utf-8')
-          tests = '''\n\n  it("records a caught dismissal with the fielder and credits the bowler", async () => {\n    const { innings, playersA, playersB } = await createFixture();\n    await recordPersistentDelivery({\n      inningsId: innings.id, bowlerId: playersB[0].id, strikerId: playersA[0].id, nonStrikerId: playersA[1].id,\n      isWicket: true, wicketType: "CAUGHT", dismissedPlayerId: playersA[0].id, replacementPlayerId: playersA[2].id, fielderId: playersB[2].id,\n    });\n    const wicket = await prisma.wicket.findFirstOrThrow({ where: { delivery: { inningsId: innings.id } } });\n    expect(wicket.type).toBe("CAUGHT");\n    expect(wicket.fielderId).toBe(playersB[2].id);\n    expect(wicket.bowlerId).toBe(playersB[0].id);\n  });\n\n  it("records a run out with the fielder but does not credit the bowler", async () => {\n    const { innings, playersA, playersB } = await createFixture();\n    await recordPersistentDelivery({\n      inningsId: innings.id, bowlerId: playersB[0].id, strikerId: playersA[0].id, nonStrikerId: playersA[1].id,\n      isWicket: true, wicketType: "RUN_OUT", dismissedPlayerId: playersA[1].id, replacementPlayerId: playersA[2].id, fielderId: playersB[0].id,\n    });\n    const wicket = await prisma.wicket.findFirstOrThrow({ where: { delivery: { inningsId: innings.id } } });\n    expect(wicket.type).toBe("RUN_OUT");\n    expect(wicket.fielderId).toBe(playersB[0].id);\n    expect(wicket.bowlerId).toBeNull();\n  });\n\n  it("requires a fielding player for a caught dismissal", async () => {\n    const { innings, playersA, playersB } = await createFixture();\n    await expect(recordPersistentDelivery({\n      inningsId: innings.id, bowlerId: playersB[0].id, strikerId: playersA[0].id, nonStrikerId: playersA[1].id,\n      isWicket: true, wicketType: "CAUGHT", dismissedPlayerId: playersA[0].id, replacementPlayerId: playersA[2].id,\n    })).rejects.toThrow("requires the fielding player involved");\n  });\n'''
-          idx = text.rfind('\n});')
-          if idx < 0:
-              raise SystemExit('missing scoring test closing marker')
-          test.write_text(text[:idx] + tests + text[idx:], encoding='utf-8')
+          if 'records a caught dismissal with the fielder' not in text:
+              tests = '''\n\n  it("records a caught dismissal with the fielder and credits the bowler", async () => {\n    const { innings, playersA, playersB } = await createFixture();\n    await recordPersistentDelivery({\n      inningsId: innings.id, bowlerId: playersB[0].id, strikerId: playersA[0].id, nonStrikerId: playersA[1].id,\n      isWicket: true, wicketType: "CAUGHT", dismissedPlayerId: playersA[0].id, replacementPlayerId: playersA[2].id, fielderId: playersB[2].id,\n    });\n    const wicket = await prisma.wicket.findFirstOrThrow({ where: { delivery: { inningsId: innings.id } } });\n    expect(wicket.type).toBe("CAUGHT");\n    expect(wicket.fielderId).toBe(playersB[2].id);\n    expect(wicket.bowlerId).toBe(playersB[0].id);\n  });\n\n  it("records a run out with the fielder but does not credit the bowler", async () => {\n    const { innings, playersA, playersB } = await createFixture();\n    await recordPersistentDelivery({\n      inningsId: innings.id, bowlerId: playersB[0].id, strikerId: playersA[0].id, nonStrikerId: playersA[1].id,\n      isWicket: true, wicketType: "RUN_OUT", dismissedPlayerId: playersA[1].id, replacementPlayerId: playersA[2].id, fielderId: playersB[0].id,\n    });\n    const wicket = await prisma.wicket.findFirstOrThrow({ where: { delivery: { inningsId: innings.id } } });\n    expect(wicket.type).toBe("RUN_OUT");\n    expect(wicket.fielderId).toBe(playersB[0].id);\n    expect(wicket.bowlerId).toBeNull();\n  });\n\n  it("requires a fielding player for a caught dismissal", async () => {\n    const { innings, playersA, playersB } = await createFixture();\n    await expect(recordPersistentDelivery({\n      inningsId: innings.id, bowlerId: playersB[0].id, strikerId: playersA[0].id, nonStrikerId: playersA[1].id,\n      isWicket: true, wicketType: "CAUGHT", dismissedPlayerId: playersA[0].id, replacementPlayerId: playersA[2].id,\n    })).rejects.toThrow("requires the fielding player involved");\n  });\n'''
+              idx = text.rfind('\n});')
+              if idx < 0:
+                  raise SystemExit('missing scoring test closing marker')
+              test.write_text(text[:idx] + tests + text[idx:], encoding='utf-8')
+
+          route = Path('src/app/api/innings/[inningsId]/route.ts')
+          text = route.read_text(encoding='utf-8')
+          old = '''                bowlerId: true,\n              },\n            },'''
+          new = '''                bowlerId: true,\n                fielderId: true,\n              },\n            },'''
+          if old in text:
+              route.write_text(text.replace(old, new, 1), encoding='utf-8')
+
           print('Wicket dismissal patch applied.')
           PY
 
       - name: Verify
         run: |
           npm ci
+          npx prisma generate
           npx tsc --noEmit
           npm test -- --run
 
@@ -123,8 +154,8 @@ jobs:
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add src/app/page.tsx src/lib/scoring.ts src/lib/scoring.test.ts
-          git commit -m "feat: record wicket dismissal details"
+          git add src/app/page.tsx src/lib/scoring.ts src/lib/scoring.test.ts 'src/app/api/innings/[inningsId]/route.ts'
+          git commit -m "fix: show dismissal notation in live scorecard"
           git rm .github/workflows/implement-wicket-dismissals.yml
           git commit -m "chore: remove temporary wicket workflow"
           git push
