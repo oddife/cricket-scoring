@@ -1,0 +1,70 @@
+name: Patch Man of the Match UI
+
+on:
+  push:
+    branches:
+      - feature/man-of-the-match
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Patch Man of the Match UI
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+
+          p = Path('src/app/page.tsx')
+          s = p.read_text(encoding='utf-8')
+
+          old_state = '''const [scorecardMatch, setScorecardMatch] = useState<ScorecardMatch | null>(null);\n  const [loadingScorecard, setLoadingScorecard] = useState(false);'''
+          new_state = '''const [scorecardMatch, setScorecardMatch] = useState<ScorecardMatch | null>(null);\n  const [loadingScorecard, setLoadingScorecard] = useState(false);\n  const [matchAwardSuggestions, setMatchAwardSuggestions] = useState<{\n    candidates: Array<{ playerId: string; player: { id: string; name: string; jerseyNumber: number | null }; runs: number; wickets: number; score: number }>;\n    suggestedPlayerId: string | null;\n    award: { awardedPlayerId: string | null } | null;\n  } | null>(null);\n  const [savingMatchAward, setSavingMatchAward] = useState(false);'''
+          if s.count(old_state) != 1:
+              raise SystemExit(f'Expected scorecard state block once, found {s.count(old_state)}')
+          s = s.replace(old_state, new_state, 1)
+
+          old_open = '''      const data = await response.json();\n      if (!response.ok) throw new Error(data?.error || "Failed to load scorecard.");\n      setScorecardMatch(data.match ?? data);'''
+          new_open = '''      const data = await response.json();\n      if (!response.ok) throw new Error(data?.error || "Failed to load scorecard.");\n      setScorecardMatch(data.match ?? data);\n\n      const awardResponse = await fetch(`/api/matches/${matchId}/award`, { cache: "no-store" });\n      const awardData = await awardResponse.json();\n      if (awardResponse.ok) {\n        setMatchAwardSuggestions(awardData);\n      } else {\n        setMatchAwardSuggestions(null);\n      }'''
+          if s.count(old_open) != 1:
+              raise SystemExit(f'Expected scorecard open block once, found {s.count(old_open)}')
+          s = s.replace(old_open, new_open, 1)
+
+          old_export = '''  function exportScorecardPdf() {'''
+          new_export = '''  async function saveMatchAward(playerId: string) {\n    if (!scorecardMatch) return;\n    try {\n      setSavingMatchAward(true);\n      setError("");\n      const response = await fetch(`/api/matches/${scorecardMatch.id}/award`, {\n        method: "PUT",\n        headers: { "Content-Type": "application/json" },\n        body: JSON.stringify({ playerId }),\n      });\n      const data = await response.json();\n      if (!response.ok) throw new Error(data?.error || "Failed to save Man of the Match.");\n\n      setMatchAwardSuggestions((current) => ({\n        candidates: current?.candidates ?? [],\n        suggestedPlayerId: data.suggestedPlayerId ?? current?.suggestedPlayerId ?? null,\n        award: { awardedPlayerId: data.awardedPlayerId ?? null },\n      }));\n    } catch (err) {\n      setError(err instanceof Error ? err.message : "Failed to save Man of the Match.");\n    } finally {\n      setSavingMatchAward(false);\n    }\n  }\n\n  function exportScorecardPdf() {'''
+          if s.count(old_export) != 1:
+              raise SystemExit(f'Expected export function once, found {s.count(old_export)}')
+          s = s.replace(old_export, new_export, 1)
+
+          marker = '''                  <div className={`mt-3 flex flex-col gap-2 rounded-xl px-3 py-2.5 text-sm font-bold sm:flex-row sm:items-center sm:justify-between ${matchStatus === "COMPLETED" ? "bg-slate-100 text-slate-700" : "bg-emerald-50 text-emerald-700"}`}><div className="flex items-center gap-3 whitespace-nowrap"><span>{matchStatus === "COMPLETED" ? "COMPLETED" : "LIVE"}</span><span>{resultText}</span></div>{target != null && <div className="text-xs font-semibold text-slate-700 sm:text-right">Target for <b>{targetTeam}</b> (batting last) in <b>inning {match.inningsPerMatch}</b>: <b className="text-emerald-700">{target} runs</b></div>}</div>\n'''
+
+          insertion = marker + '''\n                  {matchStatus === "COMPLETED" && matchAwardSuggestions && (\n                    <section className="mt-4 rounded-xl border border-amber-200 bg-amber-50 p-4 text-slate-900">\n                      <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">\n                        <div>\n                          <p className="text-xs font-bold uppercase tracking-wide text-amber-700">Man of the Match</p>\n                          <p className="mt-1 text-sm text-slate-600">Select the award winner. The suggested player is based on match performance and is only a recommendation.</p>\n                        </div>\n                        {matchAwardSuggestions.suggestedPlayerId && (\n                          <span className="rounded-lg bg-amber-100 px-2.5 py-1 text-xs font-semibold text-amber-800">Suggested</span>\n                        )}\n                      </div>\n\n                      <div className="mt-3 grid gap-2 sm:grid-cols-2">\n                        {matchAwardSuggestions.candidates.map((candidate) => {\n                          const selected = matchAwardSuggestions.award?.awardedPlayerId === candidate.playerId;\n                          const suggested = matchAwardSuggestions.suggestedPlayerId === candidate.playerId;\n                          return (\n                            <button\n                              key={candidate.playerId}\n                              type="button"\n                              disabled={savingMatchAward}\n                              onClick={() => void saveMatchAward(candidate.playerId)}\n                              className={`rounded-xl border px-3 py-3 text-left transition ${selected ? "border-amber-500 bg-amber-100" : "border-slate-200 bg-white hover:border-amber-300"}`}\n                            >\n                              <div className="flex items-center justify-between gap-2">\n                                <span className="font-bold">{candidate.player.name}</span>\n                                {selected && <span className="text-xs font-bold text-amber-700">WINNER</span>}\n                              </div>\n                              <p className="mt-1 text-xs text-slate-500">{candidate.runs} runs · {candidate.wickets} wickets · score {candidate.score}</p>\n                              {suggested && !selected && <p className="mt-1 text-[11px] font-semibold text-amber-700">Suggested by performance</p>}\n                            </button>\n                          );\n                        })}\n                      </div>\n                    </section>\n                  )}\n'''
+          if s.count(marker) != 1:
+              raise SystemExit(f'Expected scorecard status marker once, found {s.count(marker)}')
+          s = s.replace(marker, insertion, 1)
+
+          p.write_text(s, encoding='utf-8')
+          print('Man of the Match UI patched exactly once.')
+          PY
+
+      - name: Verify
+        run: |
+          npm ci
+          npx prisma generate
+          npx tsc --noEmit
+          npm test -- --run
+
+      - name: Commit patch and remove workflow
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add src/app/page.tsx
+          git commit -m "feat: add man of the match selection"
+          git push origin feature/man-of-the-match
+          git rm .github/workflows/patch-motm.yml
+          git commit -m "chore: remove man of the match patch workflow"
+          git push origin feature/man-of-the-match
