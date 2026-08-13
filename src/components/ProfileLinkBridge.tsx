@@ -47,6 +47,13 @@ export default function ProfileLinkBridge() {
 
       const entity = matches[0];
       clickable.dataset.profileLinked = "true";
+      clickable.classList.add(
+        "cursor-pointer",
+        "hover:text-emerald-400",
+        "hover:underline",
+        "underline-offset-2",
+        "transition-colors",
+      );
       clickable.style.cursor = "pointer";
       clickable.title = `Open ${entity.type} profile`;
       window.location.href = entity.type === "player" ? `/profile/player/${entity.id}` : `/profile/team/${entity.id}`;
