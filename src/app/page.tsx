@@ -3543,9 +3543,19 @@ const [resumingMatchId, setResumingMatchId] =
                     </div>
                   </div>
                 )}
-                <div><label htmlFor="replacementPlayer" className="mb-2 block text-sm font-semibold">Replacement batsman</label><select id="replacementPlayer" value={replacementPlayerId} onChange={(event) => setReplacementPlayerId(event.target.value)} className="h-12 w-full rounded-lg border border-slate-700 bg-slate-950 px-3 text-white [color-scheme:dark] [color-scheme:dark]"><option value="">Select replacement</option>{nextBatsmen.filter((player) => player.id !== dismissedPlayerId).map((player) => <option key={player.id} value={player.id}>{player.name}</option>)}</select></div>
+                {nextBatsmen.length > 0 ? (
+        <div>
+          <label htmlFor="replacementPlayer" className="mb-2 block text-sm font-semibold">Replacement batsman</label>
+          <select id="replacementPlayer" value={replacementPlayerId} onChange={(event) => setReplacementPlayerId(event.target.value)} className="h-12 w-full rounded-lg border border-slate-700 bg-slate-950 px-3 text-white [color-scheme:dark]">
+            <option value="">Select replacement</option>
+            {nextBatsmen.map((player) => <option key={player.id} value={player.id}>{player.name}</option>)}
+          </select>
+        </div>
+      ) : (
+        <div className="rounded-lg border border-red-300 bg-red-50 px-4 py-3 text-sm font-black text-red-700">ALL OUT — no replacement batsman available.</div>
+      )}
               </div>
-              <div className="mt-6 grid grid-cols-2 gap-3"><button type="button" onClick={() => { setShowWicketPanel(false); setPendingWicketExtraType(null); setPendingWicketExtraRuns(0); setReplacementPlayerId(""); setFielderId(""); }} className="h-12 rounded-lg border border-slate-300 font-semibold [color-scheme:dark]">Cancel</button><button type="button" disabled={!replacementPlayerId || liveLoading || ((wicketType === "CAUGHT" || wicketType === "RUN_OUT" || wicketType === "STUMPED") && !fielderId)} onClick={() => void recordLiveDelivery({ isWicket: true, wicketType, dismissedPlayerId, replacementPlayerId, ...(fielderId ? { fielderId } : {}), ...(pendingWicketExtraType ? { runsExtra: pendingWicketExtraRuns, extraType: pendingWicketExtraType } : {}) })} className="h-12 rounded-lg bg-red-500 font-bold text-white disabled:opacity-40 [color-scheme:dark]">Confirm Wicket</button></div>
+              <div className="mt-6 grid grid-cols-2 gap-3"><button type="button" onClick={() => { setShowWicketPanel(false); setPendingWicketExtraType(null); setPendingWicketExtraRuns(0); setReplacementPlayerId(""); setFielderId(""); }} className="h-12 rounded-lg border border-slate-300 font-semibold [color-scheme:dark]">Cancel</button><button type="button" disabled={(nextBatsmen.length > 0 && !replacementPlayerId) || liveLoading || ((wicketType === "CAUGHT" || wicketType === "RUN_OUT" || wicketType === "STUMPED") && !fielderId)} onClick={() => void recordLiveDelivery({ isWicket: true, wicketType, dismissedPlayerId, replacementPlayerId, ...(fielderId ? { fielderId } : {}), ...(pendingWicketExtraType ? { runsExtra: pendingWicketExtraRuns, extraType: pendingWicketExtraType } : {}) })} className="h-12 rounded-lg bg-red-500 font-bold text-white disabled:opacity-40 [color-scheme:dark]">Confirm Wicket</button></div>
             </div>
           </div>
         )}
