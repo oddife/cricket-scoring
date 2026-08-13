@@ -6,6 +6,15 @@ const MAINTENANCE_PIN = "2580";
 
 type RouteContext = { params: Promise<{ id: string }> };
 
+type RecentMatch = {
+  id: string;
+  createdAt: Date;
+  status: string;
+  opponent: { id: string; name: string };
+  winnerId: string | null;
+  tournamentName: string | null;
+};
+
 export async function GET(_request: Request, { params }: RouteContext) {
   try {
     const { id } = await params;
@@ -22,9 +31,24 @@ export async function GET(_request: Request, { params }: RouteContext) {
 
     if (!team) return NextResponse.json({ error: "Team not found." }, { status: 404 });
 
-    const matches = [...team.homeMatches, ...team.awayMatches].sort(
-      (a, b) => b.createdAt.getTime() - a.createdAt.getTime(),
-    );
+    const matches: RecentMatch[] = [
+      ...team.homeMatches.map((match) => ({
+        id: match.id,
+        createdAt: match.createdAt,
+        status: match.status,
+        opponent: { id: match.teamB.id, name: match.teamB.name },
+        winnerId: match.winnerId,
+        tournamentName: match.tournament?.name ?? null,
+      })),
+      ...team.awayMatches.map((match) => ({
+        id: match.id,
+        createdAt: match.createdAt,
+        status: match.status,
+        opponent: { id: match.teamA.id, name: match.teamA.name },
+        winnerId: match.winnerId,
+        tournamentName: match.tournament?.name ?? null,
+      })),
+    ].sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime());
     const wins = matches.filter((match) => match.winnerId === team.id).length;
 
     return NextResponse.json({
@@ -63,10 +87,10 @@ export async function GET(_request: Request, { params }: RouteContext) {
         id: match.id,
         createdAt: match.createdAt,
         status: match.status,
-        opponent: match.teamAId === team.id ? match.teamB.name : match.teamA.name,
-        opponentId: match.teamAId === team.id ? match.teamB.id : match.teamA.id,
+        opponent: match.opponent.name,
+        opponentId: match.opponent.id,
         winnerId: match.winnerId,
-        tournamentName: match.tournament?.name ?? null,
+        tournamentName: match.tournamentName,
       })),
     });
   } catch (error) {
