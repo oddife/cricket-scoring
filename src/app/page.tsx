@@ -3207,7 +3207,7 @@ const [resumingMatchId, setResumingMatchId] =
                             <div className="flex min-w-0 items-center gap-2">
                               <span className={`flex h-7 w-7 shrink-0 items-center justify-center rounded-full text-xs font-bold text-white [color-scheme:dark] ${stat.dismissed ? "bg-red-600" : "bg-emerald-600"}`}>{stat.player.jerseyNumber ?? ""}</span>
                               <div className="min-w-0">
-                                <span className="block truncate font-bold">{stat.player.name}{stat.player.id === liveStrikerId ? " *" : ""}{stat.dismissed ? " OUT" : ""}</span>
+                                <span className="block truncate font-bold">{stat.player.name}{stat.player.id === liveStrikerId ? " *" : ""}</span>
                                 <span className="block truncate whitespace-pre text-[9px] text-slate-400">{stat.dismissed ? liveDismissalText(stat.player.id) : "NOT OUT"}</span>
                               </div>
                             </div>
