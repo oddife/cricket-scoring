@@ -25,6 +25,61 @@ body {
   font-family: Arial, Helvetica, sans-serif;
 }
 
+/* Live scorer desktop layout ------------------------------------------------
+   Keep the compact/tablet layout intact, but give the scoring area priority
+   once the desktop navigation is visible. */
+@media (min-width: 1024px) {
+  #live-top {
+    grid-template-columns: 110px minmax(0, 1fr) !important;
+  }
+
+  #live-top > aside {
+    padding: 0.5rem !important;
+  }
+
+  #live-top > aside button {
+    padding-left: 0.55rem !important;
+    padding-right: 0.55rem !important;
+    font-size: 0.78rem !important;
+  }
+
+  #live-top > div > div {
+    grid-template-columns: 220px minmax(0, 1.8fr) 270px !important;
+  }
+
+  #live-match-info,
+  #live-top > div > div > aside {
+    align-self: start;
+  }
+
+  #live-match-info {
+    height: fit-content;
+  }
+
+  #live-deliveries button {
+    min-width: 0;
+  }
+
+  #live-players {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (min-width: 1280px) {
+  #live-top {
+    grid-template-columns: 120px minmax(0, 1fr) !important;
+  }
+
+  #live-top > div > div {
+    grid-template-columns: 230px minmax(0, 2fr) 285px !important;
+  }
+}
+
+@media (min-width: 1536px) {
+  #live-top > div > div {
+    grid-template-columns: 250px minmax(0, 2.2fr) 310px !important;
+  }
+}
 
 @media print {
   @page {
