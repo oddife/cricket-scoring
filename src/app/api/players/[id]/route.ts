@@ -27,9 +27,6 @@ export async function GET(_request: Request, { params }: RouteContext) {
         strikerDeliveries: {
           select: { runsBat: true, isLegal: true, extraType: true },
         },
-        bowledDeliveries: {
-          select: { isLegal: true },
-        },
         wicketsTaken: { select: { id: true } },
         dismissedIn: { select: { id: true } },
       },
@@ -129,7 +126,7 @@ export async function DELETE(request: Request, { params }: RouteContext) {
     const [deliveries, wickets, awards, matchPlayers, teamLinks, tournamentLinks] = await Promise.all([
       prisma.delivery.count({ where: { OR: [{ strikerId: id }, { nonStrikerId: id }, { bowlerId: id }] } }),
       prisma.wicket.count({ where: { OR: [{ dismissedPlayerId: id }, { bowlerId: id }, { fielderId: id }] } }),
-      prisma.matchAward.count({ where: OR: [{ suggestedPlayerId: id }, { awardedPlayerId: id }] }),
+      prisma.matchAward.count({ where: { OR: [{ suggestedPlayerId: id }, { awardedPlayerId: id }] } }),
       prisma.matchPlayer.count({ where: { playerId: id } }),
       prisma.teamPlayer.count({ where: { playerId: id } }),
       prisma.tournamentTeamPlayer.count({ where: { playerId: id } }),
