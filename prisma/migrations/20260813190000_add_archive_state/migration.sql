@@ -1,0 +1,2 @@
+ALTER TABLE "Player" ADD COLUMN "archivedAt" DATETIME;
+ALTER TABLE "Team" ADD COLUMN "archivedAt" DATETIME;
