@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 
-import { swapPersistentStrikers } from "@/lib/scoring";
+import { swapPersistentStrikers } from "@/lib/scoring-actions";
 
 type RouteContext = {
   params: Promise<{
