@@ -337,6 +337,7 @@ const [resumingMatchId, setResumingMatchId] =
   const [liveStrikerId, setLiveStrikerId] = useState("");
   const [liveNonStrikerId, setLiveNonStrikerId] =
     useState("");
+  const [liveAutoSwapNotice, setLiveAutoSwapNotice] = useState(false);  
   const [liveBowlerId, setLiveBowlerId] = useState("");
   const [liveBowlerAId, setLiveBowlerAId] =
     useState("");
@@ -2504,18 +2505,47 @@ const [resumingMatchId, setResumingMatchId] =
               liveCurrentOver + 1,
           ),
         );
-        setLiveCurrentBall(1);
-        setLiveDeliveryCount(0);
-        setLiveOverRuns([]);
-        setLivePreviousBowlerAId(liveBowlerAId);
-        setLivePreviousBowlerBId(liveBowlerBId);
-        setLiveNeedsManualSwap(
-          Boolean(
-            data.needsManualStrikeSwap ??
-              result.needsManualStrikeSwap,
-          ),
-        );
+const needsAutomaticStrikeSwap = Boolean(
+  data.needsManualStrikeSwap ??
+    result.needsManualStrikeSwap,
+);
 
+setLiveNeedsManualSwap(false);
+
+if (needsAutomaticStrikeSwap && liveInningsId) {
+  try {
+    const swapResponse = await fetch(
+      `/api/innings/${liveInningsId}/swap-strikers`,
+      {
+        method: "POST",
+      },
+    );
+
+    const swapData = await swapResponse.json();
+
+    if (!swapResponse.ok) {
+      throw new Error(
+        swapData?.error || "Failed to automatically swap batsmen.",
+      );
+    }
+
+    setLiveStrikerId(swapData.strikerId);
+    setLiveNonStrikerId(swapData.nonStrikerId);
+    setLiveUndoAvailable(true);
+
+    setLiveAutoSwapNotice(true);
+
+    window.setTimeout(() => {
+      setLiveAutoSwapNotice(false);
+    }, 2500);
+  } catch (swapError) {
+    console.error("Automatic batsman swap failed:", swapError);
+
+    // Keep the existing notification/button available if
+    // the automatic swap could not be completed.
+    setLiveNeedsManualSwap(true);
+  }
+}
         const combinedLegalBallsAfterOver =
           liveLegalBalls +
           (input.extraType === "WIDE" ||
@@ -3272,7 +3302,15 @@ const [resumingMatchId, setResumingMatchId] =
                 <div className={`rounded-xl border p-3 shadow-sm transition-all [color-scheme:dark] ${liveNeedsManualSwap ? "border-amber-300 bg-amber-50 ring-2 ring-amber-200/80" : "border-slate-200 bg-white"}`}>
                   <div className="flex flex-wrap items-center gap-2">
                     <button type="button" onClick={() => void performUndo()} disabled={liveLoading || !liveUndoAvailable} className="h-11 rounded-lg border border-slate-300 bg-slate-100 px-4 font-bold text-slate-800 disabled:cursor-not-allowed disabled:opacity-40">Undo</button>
-                    <button type="button" onClick={() => void manuallySwapStrikers()} disabled={liveLoading || liveInningsComplete || !liveStrikerId || !liveNonStrikerId} className={`h-11 rounded-lg px-4 font-bold transition disabled:opacity-40 ${liveNeedsManualSwap ? "bg-amber-500 text-white hover:bg-amber-600 shadow-md" : "border border-slate-300 bg-slate-100 text-slate-800 hover:bg-slate-200"}`}>Swap Batsmen</button>
+                    <button  type="button"  onClick={() => void manuallySwapStrikers()}  disabled={liveLoading ||  liveInningsComplete ||  !liveStrikerId ||   !liveNonStrikerId  }  className={`h-11 rounded-lg px-4 font-bold transition disabled:opacity-40 ${liveAutoSwapNotice
+      ? "bg-emerald-600 text-white shadow-md"
+      : liveNeedsManualSwap
+        ? "bg-amber-500 text-white hover:bg-amber-600 shadow-md"
+        : "border border-slate-300 bg-slate-100 text-slate-800 hover:bg-slate-200"
+  }`}
+>
+  {liveAutoSwapNotice ? "Auto-swapped ✓" : "Swap Batsmen"}
+</button>
                     <button type="button" onClick={() => { setManualStrikerId(liveStrikerId); setManualNonStrikerId(liveNonStrikerId); setManualActionMenu("BATSMAN"); }} disabled={liveLoading || liveInningsComplete} className="h-11 rounded-lg border border-slate-300 bg-slate-100 px-4 font-bold text-slate-800 disabled:opacity-40">Change Batsman</button>
                     <button type="button" onClick={() => { setManualBowlerAId(liveBowlerAId || liveBowlerId); setManualBowlerBId(liveBowlerBId); setManualActionMenu("BOWLER"); }} disabled={liveLoading || liveInningsComplete} className="h-11 rounded-lg border border-slate-300 bg-slate-100 px-4 font-bold text-slate-800 disabled:opacity-40">Change Bowler</button>
                   </div>
