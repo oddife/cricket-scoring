@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import LeaguePanel from "@/components/LeaguePanel";
+import TournamentLogoEditor from "@/components/TournamentLogoEditor";
 
 type BowlingMode = "NORMAL" | "DOUBLE";
 type InningsMode = 2 | 4;
@@ -82,6 +83,7 @@ type Tournament = {
       name: string;
       season: string | null;
       format: string;
+      logo: string | null;
       startDate: string | null;
       endDate: string | null;
       status: "ACTIVE" | "COMPLETED";
@@ -3583,10 +3585,9 @@ const [resumingMatchId, setResumingMatchId] =
   function verifyMaintenancePin() {
     const SECRET_PIN = "2580";
     if (maintenancePin === SECRET_PIN) {
-      setMaintenanceMode("MENU");
-      setMaintenancePin("");
-      setMaintenanceError("");
-      return;
+       setMaintenanceMode("MENU");
+       setMaintenanceError("");
+       return;
     }
     setMaintenanceError("Incorrect PIN.");
     setMaintenancePin("");
@@ -4349,10 +4350,16 @@ late-800 disabled:opacity-50 [color-scheme:dark]"
                       <div className="mb-3">
                         <p className="font-semibold text-slate-200">{tournament.name}</p>
                         <p className="mt-1 text-xs text-slate-500">
-                          {tournament.season ? `${tournament.season}  -  ` : ""}
-                          {tournament._count.matches} matches
+                           {tournament.season ? `${tournament.season}  -  ` : ""}
+                           {tournament._count.matches} matches
                         </p>
                       </div>
+
+                      <TournamentLogoEditor
+                        tournamentId={tournament.id}
+                        currentLogo={tournament.logo}
+                        maintenancePin={maintenancePin}
+                      />
                       <button
                         type="button"
                         disabled={deletingTournamentId === tournament.id}
