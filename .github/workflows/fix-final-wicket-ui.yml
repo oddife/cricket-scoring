@@ -1,0 +1,66 @@
+name: Apply final wicket UI fix
+
+on:
+  push:
+    branches:
+      - wicket-dismissal-2026-08-13
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    if: "!contains(github.event.head_commit.message, 'fix: final wicket replacement UI')"
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Patch final wicket UI
+        shell: python
+        run: |
+          from pathlib import Path
+
+          path = Path("src/app/page.tsx")
+          text = path.read_text(encoding="utf-8")
+
+          old_replacement = '''<div><label htmlFor="replacementPlayer" className="mb-2 block text-sm font-semibold">Replacement batsman</label><select id="replacementPlayer" value={replacementPlayerId} onChange={(event) => setReplacementPlayerId(event.target.value)} className="h-12 w-full rounded-lg border border-slate-700 bg-slate-950 px-3 text-white [color-scheme:dark] [color-scheme:dark]"><option value="">Select replacement</option>{nextBatsmen.filter((player) => player.id !== dismissedPlayerId).map((player) => <option key={player.id} value={player.id}>{player.name}</option>)}</select></div>'''
+
+          new_replacement = '''{nextBatsmen.length > 0 ? (
+                  <div>
+                    <label htmlFor="replacementPlayer" className="mb-2 block text-sm font-semibold">Replacement batsman</label>
+                    <select id="replacementPlayer" value={replacementPlayerId} onChange={(event) => setReplacementPlayerId(event.target.value)} className="h-12 w-full rounded-lg border border-slate-700 bg-slate-950 px-3 text-white [color-scheme:dark]">
+                      <option value="">Select replacement</option>
+                      {nextBatsmen.map((player) => <option key={player.id} value={player.id}>{player.name}</option>)}
+                    </select>
+                  </div>
+                ) : (
+                  <div className="rounded-lg border border-red-300 bg-red-50 px-4 py-3 text-sm font-black text-red-700">ALL OUT — no replacement batsman available.</div>
+                )}'''
+
+          old_button = '''<button type="button" disabled={!replacementPlayerId || liveLoading || ((wicketType === "CAUGHT" || wicketType === "RUN_OUT" || wicketType === "STUMPED") && !fielderId)}'''
+          new_button = '''<button type="button" disabled={(nextBatsmen.length > 0 && !replacementPlayerId) || liveLoading || ((wicketType === "CAUGHT" || wicketType === "RUN_OUT" || wicketType === "STUMPED") && !fielderId)}'''
+
+          if old_replacement not in text:
+              raise SystemExit("Expected replacement batsman UI was not found; aborting without changes.")
+          if old_button not in text:
+              raise SystemExit("Expected confirm wicket button was not found; aborting without changes.")
+
+          text = text.replace(old_replacement, new_replacement, 1)
+          text = text.replace(old_button, new_button, 1)
+          path.write_text(text, encoding="utf-8")
+
+      - name: Verify TypeScript source change
+        run: |
+          grep -n "ALL OUT — no replacement batsman available" src/app/page.tsx
+          grep -n "nextBatsmen.length > 0 && !replacementPlayerId" src/app/page.tsx
+
+      - name: Commit patch and remove temporary workflow
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add src/app/page.tsx
+          git rm .github/workflows/fix-final-wicket-ui.yml
+          git commit -m "fix: final wicket replacement UI"
+          git push
