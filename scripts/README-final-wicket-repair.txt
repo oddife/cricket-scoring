@@ -1,1 +1,0 @@
-Temporary repair note: restore src/lib/scoring.ts from the known-good blob before applying the final-wicket change. This file may be deleted after verification.
