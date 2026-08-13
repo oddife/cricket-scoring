@@ -1,0 +1,1 @@
+Restore src/lib/scoring.ts from known-good blob 966c2135cbd4a4903c024f39ec7d515682b9cef5 before further edits.
