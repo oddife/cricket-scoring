@@ -1,0 +1,195 @@
+name: Repair scoring exports and final wicket
+
+on:
+  push:
+    branches:
+      - wicket-dismissal-2026-08-13
+
+permissions:
+  contents: write
+
+jobs:
+  repair:
+    if: "!contains(github.event.head_commit.message, 'fix: repair scoring exports and final wicket')"
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Restore known-good scoring implementation
+        shell: bash
+        run: |
+          git show 0c621625c0cb4ed2bcdf7ebcfe66a7a696a92300:src/lib/scoring.ts > src/lib/scoring.ts
+
+      - name: Apply final wicket change only
+        shell: python
+        run: |
+          from pathlib import Path
+
+          path = Path("src/lib/scoring.ts")
+          text = path.read_text(encoding="utf-8").replace("\r\n", "\n")
+
+          final_anchor = """  if (!battingIds.has(input.strikerId)) {"""
+          final_insert = """  const finalWicket =
+    input.isWicket === true &&
+    innings.wickets + 1 >= battingPlayers.length - 1;
+
+"""
+          if text.count(final_anchor) != 1:
+              raise SystemExit(f"striker anchor count={text.count(final_anchor)}")
+          if "const finalWicket =" not in text:
+              text = text.replace(final_anchor, final_insert + final_anchor, 1)
+
+          required = """    if (!input.replacementPlayerId) {
+      throw new Error(
+        \"A wicket requires a replacement player.\",
+      );
+    }"""
+          optional = """    if (!input.replacementPlayerId && !finalWicket) {
+      throw new Error(
+        \"A wicket requires a replacement player.\",
+      );
+    }"""
+          if required not in text:
+              raise SystemExit("replacement requirement block not found")
+          text = text.replace(required, optional, 1)
+
+          old_validation = """    if (
+      !battingIds.has(
+        input.replacementPlayerId,
+      )
+    ) {
+      throw new Error(
+        \"Replacement player is not a match player for the batting team.\",
+      );
+    }
+
+    if (
+      input.replacementPlayerId ===
+      input.dismissedPlayerId
+    ) {
+      throw new Error(
+        \"Replacement player cannot be the dismissed player.\",
+      );
+    }
+
+    if (
+      input.replacementPlayerId ===
+        input.strikerId ||
+      input.replacementPlayerId ===
+        input.nonStrikerId
+    ) {
+      throw new Error(
+        \"Replacement player is already on the field.\",
+      );
+    }
+
+    /*
+     * A player already dismissed in this innings
+     * cannot return as the replacement.
+     */
+    const previousDismissal =
+      await prisma.wicket.findFirst({
+        where: {
+          dismissedPlayerId:
+            input.replacementPlayerId,
+          delivery: {
+            inningsId:
+              input.inningsId,
+          },
+        },
+      });
+
+    if (previousDismissal) {
+      throw new Error(
+        \"Replacement player has already been dismissed in this innings.\",
+      );
+    }"""
+
+          new_validation = """    if (input.replacementPlayerId) {
+      if (
+        !battingIds.has(
+          input.replacementPlayerId,
+        )
+      ) {
+        throw new Error(
+          \"Replacement player is not a match player for the batting team.\",
+        );
+      }
+
+      if (
+        input.replacementPlayerId ===
+        input.dismissedPlayerId
+      ) {
+        throw new Error(
+          \"Replacement player cannot be the dismissed player.\",
+        );
+      }
+
+      if (
+        input.replacementPlayerId ===
+          input.strikerId ||
+        input.replacementPlayerId ===
+          input.nonStrikerId
+      ) {
+        throw new Error(
+          \"Replacement player is already on the field.\",
+        );
+      }
+
+      /*
+       * A player already dismissed in this innings
+       * cannot return as the replacement.
+       */
+      const previousDismissal =
+        await prisma.wicket.findFirst({
+          where: {
+            dismissedPlayerId:
+              input.replacementPlayerId,
+            delivery: {
+              inningsId:
+                input.inningsId,
+            },
+          },
+        });
+
+      if (previousDismissal) {
+        throw new Error(
+          \"Replacement player has already been dismissed in this innings.\",
+        );
+      }
+    }"""
+
+          if old_validation not in text:
+              raise SystemExit("replacement validation block not found")
+          text = text.replace(old_validation, new_validation, 1)
+
+          old_complete = """  const inningsComplete =
+    newLegalBalls >=
+    innings.match.oversPerInnings * 6;"""
+          new_complete = """  const inningsComplete =
+    finalWicket ||
+    newLegalBalls >=
+      innings.match.oversPerInnings * 6;"""
+          if old_complete not in text:
+              raise SystemExit("innings completion rule not found")
+          text = text.replace(old_complete, new_complete, 1)
+
+          path.write_text(text, encoding="utf-8", newline="\n")
+          print("Final wicket change applied to known-good scoring implementation")
+
+      - name: Validate
+        run: |
+          npm ci
+          npx tsc --noEmit
+          node scripts/run-tests.mjs --run
+
+      - name: Commit repaired scoring and remove temporary patch workflows
+        shell: bash
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add src/lib/scoring.ts
+          git rm -f .github/workflows/apply-final-wicket-backend.yml .github/workflows/fix-final-wicket-direct.yml .github/workflows/repair-final-wicket-exports.yml 2>/dev/null || true
+          git rm -f scripts/apply-final-wicket-fix.mjs scripts/fix-final-wicket-backend.patch scripts/README-final-wicket-repair.txt scripts/known-good-scoring-restore.txt 2>/dev/null || true
+          git commit -m "fix: repair scoring exports and final wicket"
+          git push
