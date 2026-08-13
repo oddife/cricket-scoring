@@ -85,10 +85,10 @@ export default function PlayerProfilePage({ params }: { params: Promise<{ id: st
         body: JSON.stringify({ pin }),
       });
       const data = await response.json();
-      if (!response.ok) throw new Error(data.error || "Failed to delete player.");
+      if (!response.ok) throw new Error(data.error || "Failed to archive player.");
       window.location.href = "/";
     } catch (error) {
-      setMessage(error instanceof Error ? error.message : "Failed to delete player.");
+      setMessage(error instanceof Error ? error.message : "Failed to archive player.");
       setDeleting(false);
     }
   }
@@ -152,7 +152,7 @@ export default function PlayerProfilePage({ params }: { params: Promise<{ id: st
           <div className="mt-3 divide-y">{profile.recentMatches.length ? profile.recentMatches.map((match) => <div key={match.id} className="flex flex-col gap-1 py-3 sm:flex-row sm:items-center sm:justify-between"><div><div className="font-medium">{match.teamA} vs {match.teamB}</div><div className="text-xs text-slate-500">{match.tournamentName || "Standalone match"} · {match.teamName} · {match.role}</div></div><span className="text-xs text-slate-500">{match.status}</span></div>) : <p className="py-3 text-sm text-slate-500">No matches recorded.</p>}</div>
         </section>
 
-        {showDelete && <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4"><div className="w-full max-w-md rounded-2xl bg-white p-5 shadow-xl"><h3 className="text-lg font-bold">Delete {player.name}?</h3><p className="mt-2 text-sm text-slate-600">This uses the existing Maintenance PIN. Historical scoring data is protected; players with historical match data cannot be physically deleted.</p><input autoFocus inputMode="numeric" value={pin} onChange={(event) => setPin(event.target.value)} placeholder="Maintenance PIN" className="mt-4 w-full rounded-lg border px-3 py-2" /><div className="mt-4 flex justify-end gap-2"><button onClick={() => setShowDelete(false)} className="rounded-lg border px-4 py-2">Cancel</button><button disabled={!pin || deleting} onClick={() => void deletePlayer()} className="rounded-lg bg-red-600 px-4 py-2 text-white disabled:opacity-50">{deleting ? "Deleting…" : "Confirm Delete"}</button></div></div></div>}
+        {showDelete && <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4"><div className="w-full max-w-md rounded-2xl bg-white p-5 shadow-xl"><h3 className="text-lg font-bold">Archive {player.name}?</h3><p className="mt-2 text-sm text-slate-600">This uses the existing Maintenance PIN. The player will be removed from active rosters while all historical scoring data and this profile remain intact.</p><input autoFocus inputMode="numeric" value={pin} onChange={(event) => setPin(event.target.value)} placeholder="Maintenance PIN" className="mt-4 w-full rounded-lg border px-3 py-2" /><div className="mt-4 flex justify-end gap-2"><button onClick={() => setShowDelete(false)} className="rounded-lg border px-4 py-2">Cancel</button><button disabled={!pin || deleting} onClick={() => void deletePlayer()} className="rounded-lg bg-red-600 px-4 py-2 text-white disabled:opacity-50">{deleting ? "Archiving…" : "Confirm Archive"}</button></div></div></div>}
       </div>
     </main>
   );
