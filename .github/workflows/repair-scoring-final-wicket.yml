@@ -1,0 +1,125 @@
+name: Repair scoring and final wicket
+
+on:
+  push:
+    branches:
+      - wicket-dismissal-2026-08-13
+
+permissions:
+  contents: write
+
+jobs:
+  repair:
+    if: "!contains(github.event.head_commit.message, 'fix: repair scoring final wicket')"
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Restore known-good scoring implementation
+        shell: bash
+        run: |
+          git fetch origin e2929c9da343da229aadba8011a84e09fb7246d9
+          git checkout e2929c9da343da229aadba8011a84e09fb7246d9 -- src/lib/scoring.ts
+
+      - name: Apply only final-wicket change
+        shell: python
+        run: |
+          from pathlib import Path
+
+          path = Path('src/lib/scoring.ts')
+          text = path.read_text(encoding='utf-8').replace('\r\n', '\n')
+
+          anchor = '''  if (!battingIds.has(input.strikerId)) {'''
+          final_wicket = '''  const finalWicket =
+    input.isWicket === true &&
+    innings.wickets + 1 >= battingPlayers.length - 1;
+
+'''
+          if text.count(anchor) != 1:
+              raise SystemExit(f'anchor count={text.count(anchor)}')
+          if 'const finalWicket =' not in text:
+              text = text.replace(anchor, final_wicket + anchor, 1)
+
+          required = '''    if (!input.replacementPlayerId) {
+      throw new Error(
+        "A wicket requires a replacement player.",
+      );
+    }'''
+          optional = '''    if (!input.replacementPlayerId && !finalWicket) {
+      throw new Error(
+        "A wicket requires a replacement player.",
+      );
+    }'''
+          if required in text:
+              text = text.replace(required, optional, 1)
+          elif '&& !finalWicket' not in text:
+              raise SystemExit('replacement requirement block not found')
+
+          old_validation = '''    if (
+      !battingIds.has(
+        input.replacementPlayerId,
+      )
+    ) {'''
+          new_validation = '''    if (input.replacementPlayerId) {
+      if (
+        !battingIds.has(
+          input.replacementPlayerId,
+        )
+      ) {'''
+          if old_validation not in text:
+              raise SystemExit('replacement validation anchor not found')
+          text = text.replace(old_validation, new_validation, 1)
+
+          marker = '''    /*
+     * A player already dismissed in this innings
+     * cannot return as the replacement.
+     */'''
+          marker_pos = text.find(marker)
+          if marker_pos == -1:
+              raise SystemExit('replacement validation marker not found')
+
+          # Close the new optional replacement wrapper immediately before the
+          # existing non-wicket branch.
+          end_marker = '''  } else if (
+    input.dismissedPlayerId ||
+    input.replacementPlayerId
+  ) {'''
+          end_pos = text.find(end_marker, marker_pos)
+          if end_pos == -1:
+              raise SystemExit('wicket branch end marker not found')
+
+          block = text[marker_pos:end_pos]
+          if not text[:end_pos].rstrip().endswith('    }'):
+              text = text[:end_pos] + '    }\n' + text[end_pos:]
+
+          old_complete = '''  const inningsComplete =
+    newLegalBalls >=
+    innings.match.oversPerInnings * 6;'''
+          new_complete = '''  const inningsComplete =
+    finalWicket ||
+    newLegalBalls >=
+      innings.match.oversPerInnings * 6;'''
+          if old_complete in text:
+              text = text.replace(old_complete, new_complete, 1)
+          elif new_complete not in text:
+              raise SystemExit('innings completion rule not found')
+
+          path.write_text(text, encoding='utf-8', newline='\n')
+
+      - name: Validate
+        run: |
+          npm ci
+          npx tsc --noEmit
+          node scripts/run-tests.mjs --run
+
+      - name: Commit repair and remove workflow
+        shell: bash
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add src/lib/scoring.ts
+          git rm .github/workflows/repair-scoring-final-wicket.yml
+          git commit -m 'fix: repair scoring final wicket'
+          git push
