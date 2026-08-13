@@ -23,8 +23,14 @@ export async function GET(_request: Request, { params }: RouteContext) {
       include: {
         players: { include: { player: true }, orderBy: { player: { name: "asc" } } },
         tournaments: { include: { tournament: true }, orderBy: { tournament: { name: "asc" } } },
-        homeMatches: { include: { teamB: true, winner: true, tournament: true }, orderBy: { createdAt: "desc" } },
-        awayMatches: { include: { teamA: true, winner: true, tournament: true }, orderBy: { createdAt: "desc" } },
+        homeMatches: {
+          include: { teamA: true, teamB: true, winner: true, tournament: true },
+          orderBy: { createdAt: "desc" },
+        },
+        awayMatches: {
+          include: { teamA: true, teamB: true, winner: true, tournament: true },
+          orderBy: { createdAt: "desc" },
+        },
         battingInnings: { select: { totalRuns: true, wickets: true, legalBalls: true } },
       },
     });
