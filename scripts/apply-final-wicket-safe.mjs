@@ -26,7 +26,7 @@ if (!text.includes("const finalWicket =")) {
 
 const requiredReplacement = `    if (!input.replacementPlayerId) {\n      throw new Error(\n        "A wicket requires a replacement player.",\n      );\n    }`;
 const optionalReplacement = `    if (!input.replacementPlayerId && !finalWicket) {\n      throw new Error(\n        "A wicket requires a replacement player.",\n      );\n    }`;
-if (requiredReplacement in text) {
+if (text.includes(requiredReplacement)) {
   text = text.replace(requiredReplacement, optionalReplacement);
 } else if (!text.includes("!input.replacementPlayerId && !finalWicket")) {
   throw new Error("Expected wicket replacement requirement block.");
@@ -51,7 +51,7 @@ if (!block.includes("if (input.replacementPlayerId) {")) {
 
 const oldComplete = `  const inningsComplete =\n    newLegalBalls >=\n    innings.match.oversPerInnings * 6;`;
 const newComplete = `  const inningsComplete =\n    finalWicket ||\n    newLegalBalls >=\n      innings.match.oversPerInnings * 6;`;
-if (oldComplete in text) {
+if (text.includes(oldComplete)) {
   text = text.replace(oldComplete, newComplete);
 } else if (!text.includes(newComplete)) {
   throw new Error("Expected innings completion rule.");
