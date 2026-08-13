@@ -1,0 +1,53 @@
+name: Docker Test
+
+on:
+  push:
+    branches:
+      - main
+      - qol-docker-test-baseline
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  docker:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Build image
+        run: docker build -t cricket-scoring:test .
+
+      - name: Run container
+        run: |
+          docker volume create cricket-scoring-test-data
+          docker run -d \
+            --name cricket-scoring-test \
+            -p 3000:3000 \
+            -e NODE_ENV=production \
+            -e PORT=3000 \
+            -e HOSTNAME=0.0.0.0 \
+            -e DATABASE_URL=file:/app/data/cricket.db \
+            -v cricket-scoring-test-data:/app/data \
+            cricket-scoring:test
+
+      - name: Wait for application
+        run: |
+          for i in {1..30}; do
+            if curl --fail --silent http://127.0.0.1:3000/ > /dev/null; then
+              exit 0
+            fi
+            sleep 2
+          done
+          docker logs cricket-scoring-test
+          exit 1
+
+      - name: Show logs on failure
+        if: failure()
+        run: docker logs cricket-scoring-test
+
+      - name: Cleanup
+        if: always()
+        run: docker rm -f cricket-scoring-test || true

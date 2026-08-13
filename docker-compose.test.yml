@@ -1,0 +1,19 @@
+services:
+  cricket-scoring:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: cricket-scoring-test
+    ports:
+      - "3000:3000"
+    environment:
+      NODE_ENV: production
+      PORT: 3000
+      HOSTNAME: 0.0.0.0
+      DATABASE_URL: file:/app/data/cricket.db
+    volumes:
+      - cricket_scoring_test_data:/app/data
+    restart: unless-stopped
+
+volumes:
+  cricket_scoring_test_data:
