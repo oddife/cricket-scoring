@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { undoPersistentAction } from "@/lib/scoring";
+import { undoPersistentAction } from "@/lib/scoring-actions";
 
 type RouteContext = { params: Promise<{ inningsId: string }> };
 
