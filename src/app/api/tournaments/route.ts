@@ -68,6 +68,7 @@ async function getTournamentWinner(tournamentId: string, format: string) {
 
   if (format === "LEAGUE" || format === "LEAGUE_KNOCKOUT") {
     const table = await getLeagueTable(tournamentId);
+
     if (table.length > 0 && table[0].played > 0) {
       return {
         id: table[0].teamId,
@@ -84,7 +85,9 @@ async function getTournamentWinner(tournamentId: string, format: string) {
       status: "COMPLETED",
       winnerId: { not: null },
     },
-    orderBy: { createdAt: "desc" },
+    orderBy: {
+      createdAt: "desc",
+    },
     include: {
       winner: {
         select: {
@@ -100,13 +103,27 @@ async function getTournamentWinner(tournamentId: string, format: string) {
   return latestWinner?.winner ?? null;
 }
 
-async function serializeTournament(tournament: Awaited<ReturnType<typeof prisma.tournament.findMany>>[number]) {
+async function serializeTournament(
+  tournament: Awaited<
+    ReturnType<typeof prisma.tournament.findMany>
+  >[number],
+) {
   if (tournament.status !== "COMPLETED") {
-    return { ...tournament, winner: null };
+    return {
+      ...tournament,
+      winner: null,
+    };
   }
 
-  const winner = await getTournamentWinner(tournament.id, tournament.format);
-  return { ...tournament, winner };
+  const winner = await getTournamentWinner(
+    tournament.id,
+    tournament.format,
+  );
+
+  return {
+    ...tournament,
+    winner,
+  };
 }
 
 export async function GET() {
@@ -124,7 +141,9 @@ export async function GET() {
     });
 
     const serialized = await Promise.all(
-      tournaments.map((tournament) => serializeTournament(tournament)),
+      tournaments.map((tournament) =>
+        serializeTournament(tournament),
+      ),
     );
 
     return NextResponse.json(serialized);
@@ -195,7 +214,10 @@ export async function POST(request: Request) {
     const winPoints = integerOrDefault(body.winPoints, 2);
     const lossPoints = integerOrDefault(body.lossPoints, 0);
     const tiePoints = integerOrDefault(body.tiePoints, 1);
-    const noResultPoints = integerOrDefault(body.noResultPoints, 1);
+    const noResultPoints = integerOrDefault(
+      body.noResultPoints,
+      1,
+    );
 
     const user = await getDefaultUser();
 
@@ -219,9 +241,15 @@ export async function POST(request: Request) {
       include: tournamentInclude,
     });
 
-    return NextResponse.json({ ...tournament, winner: null }, {
-      status: 201,
-    });
+    return NextResponse.json(
+      {
+        ...tournament,
+        winner: null,
+      },
+      {
+        status: 201,
+      },
+    );
   } catch (error) {
     console.error("Failed to create tournament:", error);
 
@@ -326,5 +354,3 @@ export async function DELETE(request: Request) {
     );
   }
 }
-
-// UI patch trigger 2.
