@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { manualChangePersistentState } from "@/lib/scoring";
+import { manualChangePersistentState } from "@/lib/scoring-actions";
 
 type RouteContext = { params: Promise<{ inningsId: string }> };
 
