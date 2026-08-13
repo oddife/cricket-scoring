@@ -1,7 +1,7 @@
 import fs from "node:fs";
 
 const path = "src/lib/scoring.ts";
-let source = fs.readFileSync(path, "utf8");
+let source = fs.readFileSync(path, "utf8").replace(/\r\n/g, "\n");
 
 function replaceOnce(label, before, after) {
   const count = source.split(before).length - 1;
