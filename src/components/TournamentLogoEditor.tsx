@@ -11,14 +11,23 @@ function readImage(file: File) {
   });
 }
 
-export default function TournamentLogoEditor({ tournamentId, currentLogo }: { tournamentId: string; currentLogo: string | null }) {
+type TournamentLogoEditorProps = {
+  tournamentId: string;
+  currentLogo: string | null;
+  maintenancePin: string;
+};
+
+export default function TournamentLogoEditor({
+  tournamentId,
+  currentLogo,
+  maintenancePin,
+}: TournamentLogoEditorProps) {
   const [saving, setSaving] = useState(false);
   const [message, setMessage] = useState("");
-  const [pin, setPin] = useState("");
 
   async function upload(file: File) {
-    if (!pin) {
-      setMessage("Enter the maintenance PIN first.");
+    if (!maintenancePin) {
+      setMessage("Maintenance mode authentication is required.");
       return;
     }
 
@@ -29,20 +38,30 @@ export default function TournamentLogoEditor({ tournamentId, currentLogo }: { to
 
     setSaving(true);
     setMessage("");
+
     try {
       const logo = await readImage(file);
       const response = await fetch(`/api/tournaments/${tournamentId}/logo`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ logo, pin }),
+        body: JSON.stringify({ logo, pin: maintenancePin }),
       });
       const data = await response.json();
-      if (!response.ok) throw new Error(data.error || "Failed to update tournament photo.");
+
+      if (!response.ok) {
+        throw new Error(
+          data.error || "Failed to update tournament photo.",
+        );
+      }
+
       setMessage("Tournament photo updated.");
-      setPin("");
       window.location.reload();
     } catch (error) {
-      setMessage(error instanceof Error ? error.message : "Failed to update tournament photo.");
+      setMessage(
+        error instanceof Error
+          ? error.message
+          : "Failed to update tournament photo.",
+      );
     } finally {
       setSaving(false);
     }
@@ -52,26 +71,49 @@ export default function TournamentLogoEditor({ tournamentId, currentLogo }: { to
     <div className="rounded-xl border bg-white p-4">
       <div className="flex items-center gap-4">
         <div className="h-16 w-16 overflow-hidden rounded-xl border bg-slate-100">
-          {currentLogo ? <img src={currentLogo} alt="Tournament" className="h-full w-full object-contain" /> : <div className="flex h-full items-center justify-center text-xs text-slate-400">No photo</div>}
+          {currentLogo ? (
+            <img
+              src={currentLogo}
+              alt="Tournament"
+              className="h-full w-full object-contain"
+            />
+          ) : (
+            <div className="flex h-full items-center justify-center text-xs text-slate-400">
+              No photo
+            </div>
+          )}
         </div>
+
         <div className="min-w-0 flex-1">
           <div className="font-medium">Tournament photo</div>
-          <div className="text-xs text-slate-500">Upload or change the tournament photo.</div>
-          <input
-            type="password"
-            inputMode="numeric"
-            value={pin}
-            onChange={(event) => setPin(event.target.value)}
-            placeholder="Maintenance PIN"
-            className="mt-2 h-9 w-full max-w-[180px] rounded-lg border px-3 text-sm"
-          />
+          <div className="text-xs text-slate-500">
+            Upload or change the tournament photo.
+          </div>
         </div>
-        <label className={`cursor-pointer rounded-lg bg-slate-900 px-3 py-2 text-sm font-medium text-white ${saving ? "pointer-events-none opacity-50" : ""}`}>
+
+        <label
+          className={`cursor-pointer rounded-lg bg-slate-900 px-3 py-2 text-sm font-medium text-white ${
+            saving ? "pointer-events-none opacity-50" : ""
+          }`}
+        >
           {saving ? "Saving…" : currentLogo ? "Change" : "Upload"}
-          <input type="file" accept="image/*" className="hidden" disabled={saving || !pin} onChange={(event) => { const file = event.target.files?.[0]; if (file) void upload(file); event.currentTarget.value = ""; }} />
+          <input
+            type="file"
+            accept="image/*"
+            className="hidden"
+            disabled={saving || !maintenancePin}
+            onChange={(event) => {
+              const file = event.target.files?.[0];
+              if (file) void upload(file);
+              event.currentTarget.value = "";
+            }}
+          />
         </label>
       </div>
-      {message && <div className="mt-3 text-xs text-slate-600">{message}</div>}
+
+      {message && (
+        <div className="mt-3 text-xs text-slate-600">{message}</div>
+      )}
     </div>
   );
 }
