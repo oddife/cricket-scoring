@@ -1,0 +1,104 @@
+name: Apply direct final wicket backend fix
+
+on:
+  push:
+    branches:
+      - wicket-dismissal-2026-08-13
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    if: "!contains(github.event.head_commit.message, 'fix: final wicket without replacement')"
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Apply exact scoring change
+        shell: python
+        run: |
+          from pathlib import Path
+
+          path = Path("src/lib/scoring.ts")
+          text = path.read_text(encoding="utf-8").replace("\r\n", "\n")
+
+          anchor = '''  if (!battingIds.has(input.strikerId)) {'''
+          final_wicket = '''  const finalWicket =
+    input.isWicket === true &&
+    innings.wickets + 1 >= battingPlayers.length - 1;
+
+'''
+          if text.count(anchor) != 1:
+              raise SystemExit(f"striker anchor count={text.count(anchor)}")
+          if "const finalWicket =" not in text:
+              text = text.replace(anchor, final_wicket + anchor, 1)
+
+          required = '''    if (!input.replacementPlayerId) {
+      throw new Error(
+        "A wicket requires a replacement player.",
+      );
+    }'''
+          optional = '''    if (!input.replacementPlayerId && !finalWicket) {
+      throw new Error(
+        "A wicket requires a replacement player.",
+      );
+    }'''
+          if required in text:
+              text = text.replace(required, optional, 1)
+          elif "!finalWicket" not in text:
+              raise SystemExit("replacement requirement block not found")
+
+          old_has = '''    if (
+      !battingIds.has(
+        input.replacementPlayerId,
+      )
+    ) {'''
+          new_has = '''    if (
+      input.replacementPlayerId &&
+      !battingIds.has(
+        input.replacementPlayerId,
+      )
+    ) {'''
+          if old_has in text:
+              text = text.replace(old_has, new_has, 1)
+          elif "input.replacementPlayerId &&" not in text:
+              raise SystemExit("replacement match-player validation block not found")
+
+          old_query = '''          dismissedPlayerId:
+            input.replacementPlayerId,'''
+          new_query = '''          dismissedPlayerId:
+            input.replacementPlayerId ?? "__NO_REPLACEMENT__",'''
+          if text.count(old_query) != 1:
+              raise SystemExit(f"dismissedPlayerId query count={text.count(old_query)}")
+          text = text.replace(old_query, new_query, 1)
+
+          old_complete = '''  const inningsComplete =
+    newLegalBalls >=
+    innings.match.oversPerInnings * 6;'''
+          new_complete = '''  const inningsComplete =
+    finalWicket ||
+    newLegalBalls >=
+      innings.match.oversPerInnings * 6;'''
+          if old_complete in text:
+              text = text.replace(old_complete, new_complete, 1)
+          elif new_complete not in text:
+              raise SystemExit("innings completion rule not found")
+
+          path.write_text(text, encoding="utf-8", newline="\n")
+          print("Final wicket backend change applied")
+
+      - name: Validate
+        run: |
+          npm ci
+          npx tsc --noEmit
+          node scripts/run-tests.mjs --run
+
+      - name: Commit and remove workflow
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add src/lib/scoring.ts
+          git rm .github/workflows/fix-final-wicket-direct.yml
+          git commit -m "fix: final wicket without replacement"
+          git push

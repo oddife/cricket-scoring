@@ -8,10 +8,10 @@ export type CreateTeamInput = {
 
 export type CreatePlayerInput = {
   name: string;
-  photo?: string;
-  jerseyNumber?: number;
-  battingStyle?: string;
-  bowlingStyle?: string;
+  photo?: string | null;
+  jerseyNumber?: number | null;
+  battingStyle?: string | null;
+  bowlingStyle?: string | null;
 };
 
 /**
@@ -51,12 +51,9 @@ export async function createPlayer(
     data: {
       name,
       photo: input.photo?.trim() || null,
-      jerseyNumber:
-        input.jerseyNumber ?? null,
-      battingStyle:
-        input.battingStyle?.trim() || null,
-      bowlingStyle:
-        input.bowlingStyle?.trim() || null,
+      jerseyNumber: input.jerseyNumber ?? null,
+      battingStyle: input.battingStyle?.trim() || null,
+      bowlingStyle: input.bowlingStyle?.trim() || null,
     },
   });
 }
@@ -76,51 +73,21 @@ export async function addPlayerToTeam(
     throw new Error("Player ID is required.");
   }
 
-  const team = await prisma.team.findUnique({
-    where: {
-      id: teamId,
-    },
+  const team = await prisma.team.findUnique({ where: { id: teamId } });
+  if (!team) throw new Error("Team not found.");
+
+  const player = await prisma.player.findUnique({ where: { id: playerId } });
+  if (!player) throw new Error("Player not found.");
+
+  const existing = await prisma.teamPlayer.findUnique({
+    where: { teamId_playerId: { teamId, playerId } },
   });
 
-  if (!team) {
-    throw new Error("Team not found.");
-  }
-
-  const player = await prisma.player.findUnique({
-    where: {
-      id: playerId,
-    },
-  });
-
-  if (!player) {
-    throw new Error("Player not found.");
-  }
-
-  const existing =
-    await prisma.teamPlayer.findUnique({
-      where: {
-        teamId_playerId: {
-          teamId,
-          playerId,
-        },
-      },
-    });
-
-  if (existing) {
-    throw new Error(
-      "Player is already in this team.",
-    );
-  }
+  if (existing) throw new Error("Player is already in this team.");
 
   return prisma.teamPlayer.create({
-    data: {
-      teamId,
-      playerId,
-    },
-    include: {
-      player: true,
-      team: true,
-    },
+    data: { teamId, playerId },
+    include: { player: true, team: true },
   });
 }
 
@@ -131,94 +98,50 @@ export async function removePlayerFromTeam(
   teamId: string,
   playerId: string,
 ) {
-  if (!teamId) {
-    throw new Error("Team ID is required.");
-  }
+  if (!teamId) throw new Error("Team ID is required.");
+  if (!playerId) throw new Error("Player ID is required.");
 
-  if (!playerId) {
-    throw new Error("Player ID is required.");
-  }
+  const membership = await prisma.teamPlayer.findUnique({
+    where: { teamId_playerId: { teamId, playerId } },
+  });
 
-  const membership =
-    await prisma.teamPlayer.findUnique({
-      where: {
-        teamId_playerId: {
-          teamId,
-          playerId,
-        },
-      },
-    });
-
-  if (!membership) {
-    throw new Error(
-      "Player is not a member of this team.",
-    );
-  }
+  if (!membership) throw new Error("Player is not a member of this team.");
 
   return prisma.teamPlayer.delete({
-    where: {
-      teamId_playerId: {
-        teamId,
-        playerId,
-      },
-    },
+    where: { teamId_playerId: { teamId, playerId } },
   });
 }
 
 /**
  * Get a team with its current roster.
  */
-export async function getTeam(
-  teamId: string,
-) {
-  if (!teamId) {
-    throw new Error("Team ID is required.");
-  }
+export async function getTeam(teamId: string) {
+  if (!teamId) throw new Error("Team ID is required.");
 
   return prisma.team.findUnique({
-    where: {
-      id: teamId,
-    },
+    where: { id: teamId },
     include: {
       players: {
-        include: {
-          player: true,
-        },
-        orderBy: {
-          joinedAt: "asc",
-        },
+        include: { player: true },
+        orderBy: { joinedAt: "asc" },
       },
     },
   });
 }
 
 /**
- * Get only the players currently registered
- * with a team.
+ * Get only the players currently registered with a team.
  */
-export async function getTeamPlayers(
-  teamId: string,
-) {
-  if (!teamId) {
-    throw new Error("Team ID is required.");
-  }
+export async function getTeamPlayers(teamId: string) {
+  if (!teamId) throw new Error("Team ID is required.");
 
-  const memberships =
-    await prisma.teamPlayer.findMany({
-      where: {
-        teamId,
-      },
-      include: {
-        player: true,
-      },
-      orderBy: {
-        joinedAt: "asc",
-      },
-    });
+  const memberships = await prisma.teamPlayer.findMany({
+    where: { teamId },
+    include: { player: true },
+    orderBy: { joinedAt: "asc" },
+  });
 
-  return memberships.map(
-    (membership) => membership.player,
-  );
+  return memberships.map((membership) => membership.player);
 }
 
 /**
@@ -228,20 +151,10 @@ export async function updatePlayer(
   playerId: string,
   input: Partial<CreatePlayerInput>,
 ) {
-  if (!playerId) {
-    throw new Error("Player ID is required.");
-  }
+  if (!playerId) throw new Error("Player ID is required.");
 
-  const existing =
-    await prisma.player.findUnique({
-      where: {
-        id: playerId,
-      },
-    });
-
-  if (!existing) {
-    throw new Error("Player not found.");
-  }
+  const existing = await prisma.player.findUnique({ where: { id: playerId } });
+  if (!existing) throw new Error("Player not found.");
 
   const data: {
     name?: string;
@@ -253,40 +166,28 @@ export async function updatePlayer(
 
   if (input.name !== undefined) {
     const name = input.name.trim();
-
-    if (!name) {
-      throw new Error(
-        "Player name cannot be empty.",
-      );
-    }
-
+    if (!name) throw new Error("Player name cannot be empty.");
     data.name = name;
   }
 
   if (input.photo !== undefined) {
-    data.photo =
-      input.photo.trim() || null;
+    data.photo = input.photo?.trim() || null;
   }
 
   if (input.jerseyNumber !== undefined) {
-    data.jerseyNumber =
-      input.jerseyNumber;
+    data.jerseyNumber = input.jerseyNumber;
   }
 
   if (input.battingStyle !== undefined) {
-    data.battingStyle =
-      input.battingStyle.trim() || null;
+    data.battingStyle = input.battingStyle?.trim() || null;
   }
 
   if (input.bowlingStyle !== undefined) {
-    data.bowlingStyle =
-      input.bowlingStyle.trim() || null;
+    data.bowlingStyle = input.bowlingStyle?.trim() || null;
   }
 
   return prisma.player.update({
-    where: {
-      id: playerId,
-    },
+    where: { id: playerId },
     data,
   });
 }
@@ -298,20 +199,10 @@ export async function updateTeam(
   teamId: string,
   input: Partial<CreateTeamInput>,
 ) {
-  if (!teamId) {
-    throw new Error("Team ID is required.");
-  }
+  if (!teamId) throw new Error("Team ID is required.");
 
-  const existing =
-    await prisma.team.findUnique({
-      where: {
-        id: teamId,
-      },
-    });
-
-  if (!existing) {
-    throw new Error("Team not found.");
-  }
+  const existing = await prisma.team.findUnique({ where: { id: teamId } });
+  if (!existing) throw new Error("Team not found.");
 
   const data: {
     name?: string;
@@ -321,30 +212,20 @@ export async function updateTeam(
 
   if (input.name !== undefined) {
     const name = input.name.trim();
-
-    if (!name) {
-      throw new Error(
-        "Team name cannot be empty.",
-      );
-    }
-
+    if (!name) throw new Error("Team name cannot be empty.");
     data.name = name;
   }
 
   if (input.shortName !== undefined) {
-    data.shortName =
-      input.shortName.trim() || null;
+    data.shortName = input.shortName.trim() || null;
   }
 
   if (input.logo !== undefined) {
-    data.logo =
-      input.logo.trim() || null;
+    data.logo = input.logo.trim() || null;
   }
 
   return prisma.team.update({
-    where: {
-      id: teamId,
-    },
+    where: { id: teamId },
     data,
   });
 }

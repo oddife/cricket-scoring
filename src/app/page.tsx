@@ -32,6 +32,7 @@ type GlobalTeam = {
   name: string;
   shortName: string | null;
   logo?: string | null;
+  players?: GlobalPlayer[];
 };
 
 type ResumeMatchPlayer = {
@@ -50,6 +51,8 @@ type LiveMatchSummary = {
   teamA: { id: string; name: string; shortName: string | null };
   teamB: { id: string; name: string; shortName: string | null };
   status: string;
+  result?: string;
+  winnerId?: string | null;
   createdAt: string;
   bowlingMode: BowlingMode;
   oversPerInnings: number;
@@ -75,17 +78,24 @@ type LiveMatchSummary = {
 };
 
 type Tournament = {
-  id: string;
-  name: string;
-  season: string | null;
-  format: string;
-  startDate: string | null;
-  endDate: string | null;
-  teams: TournamentTeam[];
-  _count: {
-    matches: number;
-  };
-};
+      id: string;
+      name: string;
+      season: string | null;
+      format: string;
+      startDate: string | null;
+      endDate: string | null;
+      status: "ACTIVE" | "COMPLETED";
+      winner: {
+        id: string;
+        name: string;
+        shortName: string | null;
+        logo: string | null;
+      } | null;
+      teams: TournamentTeam[];
+      _count: {
+        matches: number;
+      };
+    };
 
 type ScorecardMatch = {
   id: string;
@@ -104,7 +114,7 @@ type ScorecardMatch = {
   innings: Array<{ id: string; inningsNumber: number; totalRuns: number; wickets: number; legalBalls: number; target: number | null; battingTeamId: string; bowlingTeamId: string; deliveries: Array<{
     id: string; overNumber: number; ballNumber: number; bowlerId: string; strikerId: string; nonStrikerId: string; runsBat: number; runsExtra: number; runsTotal: number; isLegal: boolean; extraType: string | null; isWicket: boolean;
     striker: { id: string; name: string; jerseyNumber: number | null }; bowler: { id: string; name: string; jerseyNumber: number | null };
-    wicket: { type: string; dismissedPlayerId: string; bowlerId: string | null } | null;
+    wicket: { type: string; dismissedPlayerId: string; bowlerId: string | null; fielderId: string | null } | null;
   }> }>;
 };
 
@@ -204,6 +214,8 @@ export default function Home() {
   const [selectedExistingTeamId, setSelectedExistingTeamId] = useState("");
   const [addTeamMode, setAddTeamMode] =
     useState<"EXISTING" | "NEW">("EXISTING");
+  const [addPlayerMode, setAddPlayerMode] =
+    useState<"EXISTING" | "NEW">("EXISTING");
 
   const [teamName, setTeamName] = useState("");
   const [teamShortName, setTeamShortName] = useState("");
@@ -221,6 +233,8 @@ const [completedMatches, setCompletedMatches] =
   useState<LiveMatchSummary[]>([]);
 
 const [loadingCompletedMatches, setLoadingCompletedMatches] = useState(false);
+
+const [expandedMatchId, setExpandedMatchId] = useState<string | null>(null);
   const [scorecardMatch, setScorecardMatch] = useState<ScorecardMatch | null>(null);
   const [loadingScorecard, setLoadingScorecard] = useState(false);
 
@@ -357,6 +371,8 @@ const [resumingMatchId, setResumingMatchId] =
     useState("");
   const [wicketType, setWicketType] =
     useState("BOWLED");
+  const [fielderId, setFielderId] = useState("");
+  const [liveWicketDetailsByPlayerId, setLiveWicketDetailsByPlayerId] = useState<Record<string, { type: string; bowlerId: string | null; fielderId: string | null }>>({});
   const [showCustomDeliveryPanel, setShowCustomDeliveryPanel] =
     useState(false);
   const [customDeliveryType, setCustomDeliveryType] =
@@ -389,7 +405,7 @@ const [resumingMatchId, setResumingMatchId] =
     bowler: { id: string; name: string; jerseyNumber: number | null };
     striker: { id: string; name: string; jerseyNumber: number | null };
     nonStriker: { id: string; name: string; jerseyNumber: number | null };
-    wicket: { type: string; dismissedPlayerId: string; bowlerId: string | null } | null;
+    wicket: { type: string; dismissedPlayerId: string; bowlerId: string | null; fielderId?: string | null } | null;
   };
 
   const [liveDeliveries, setLiveDeliveries] =
@@ -402,6 +418,7 @@ const [resumingMatchId, setResumingMatchId] =
   type LiveInningsHistory = {
     inningsNumber: number;
     totalRuns: number;
+    wickets?: number;
     battingTeamId: string;
     target: number | null;
   };
@@ -593,6 +610,11 @@ const [resumingMatchId, setResumingMatchId] =
               name: team.name,
               shortName: team.shortName ?? null,
               logo: team.logo ?? null,
+              players: Array.isArray(team.players)
+                ? team.players
+                    .map((entry: { player?: GlobalPlayer }) => entry?.player ?? null)
+                    .filter((player: GlobalPlayer | null): player is GlobalPlayer => Boolean(player))
+                : [],
             }))
           : [],
       );
@@ -738,6 +760,36 @@ const [resumingMatchId, setResumingMatchId] =
   // Team players
   // ---------------------------------------------------------
 
+  async function loadAvailablePlayers() {
+    try {
+      setLoadingAvailablePlayers(true);
+      setError("");
+
+      const response = await fetch("/api/players", {
+        cache: "no-store",
+      });
+      const data = await response.json();
+
+      if (!response.ok) {
+        throw new Error(
+          data?.error || "Failed to load existing players.",
+        );
+      }
+
+      setAvailablePlayers(Array.isArray(data) ? data : []);
+    } catch (err) {
+      console.error(err);
+      setAvailablePlayers([]);
+      setError(
+        err instanceof Error
+          ? err.message
+          : "Failed to load existing players.",
+      );
+    } finally {
+      setLoadingAvailablePlayers(false);
+    }
+  }
+
   async function loadTeamPlayers(teamId: string) {
     try {
       setLoadingTeamPlayers(true);
@@ -782,6 +834,52 @@ const [resumingMatchId, setResumingMatchId] =
     setPlayerJerseyNumber("");
     setPlayerBattingStyle("");
     setPlayerBowlingStyle("");
+  }
+
+  function openAddPlayerModal() {
+    setEditingPlayerId(null);
+    setAddPlayerMode("EXISTING");
+    setSelectedExistingPlayerId("");
+    resetPlayerForm();
+    setError("");
+    setShowAddPlayer(true);
+    void loadAvailablePlayers();
+  }
+
+  async function addExistingPlayerToTeam() {
+    if (!selectedTeamId) {
+      setError("Please select a team first.");
+      return;
+    }
+    if (!selectedExistingPlayerId) {
+      setError("Please select an existing player.");
+      return;
+    }
+    try {
+      setLoadingPlayerCreate(true);
+      setError("");
+      const response = await fetch(`/api/teams/${selectedTeamId}/players`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ playerId: selectedExistingPlayerId }),
+      });
+      const data = await response.json();
+      if (!response.ok) {
+        throw new Error(data?.error || "Failed to add existing player.");
+      }
+      setSelectedExistingPlayerId("");
+      setShowAddPlayer(false);
+      setAddPlayerMode("EXISTING");
+      await loadTeamPlayers(selectedTeamId);
+      if (selectedTournament) {
+        await refreshSelectedTournament(selectedTournament.id);
+      }
+    } catch (err) {
+      console.error(err);
+      setError(err instanceof Error ? err.message : "Failed to add existing player.");
+    } finally {
+      setLoadingPlayerCreate(false);
+    }
   }
 
   async function createPlayerForTeam() {
@@ -924,6 +1022,38 @@ const [resumingMatchId, setResumingMatchId] =
       );
     } finally {
       setLoadingPlayerUpdate(false);
+    }
+  }
+
+  async function removePlayerFromCurrentRoster(playerId: string, playerName: string) {
+    if (!selectedTeamId) return;
+    if (!window.confirm(`Remove "${playerName}" from this team's current roster?\n\nThe global player and historical match data will remain.`)) return;
+    try {
+      setError("");
+      const response = await fetch(`/api/teams/${selectedTeamId}/players`, { method: "DELETE", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ playerId }) });
+      const data = await response.json();
+      if (!response.ok) throw new Error(data?.error || "Failed to remove player from roster.");
+      await loadTeamPlayers(selectedTeamId);
+      if (selectedTournament) await refreshSelectedTournament(selectedTournament.id);
+    } catch (err) {
+      console.error(err);
+      setError(err instanceof Error ? err.message : "Failed to remove player from roster.");
+    }
+  }
+
+  async function removeTeamFromCurrentTournament(teamId: string, teamName: string) {
+    if (!selectedTournament) return;
+    if (!window.confirm(`Remove "${teamName}" from ${selectedTournament.name}?\n\nThe global team, players and historical match data will remain.`)) return;
+    try {
+      setError("");
+      const response = await fetch(`/api/tournaments/${selectedTournament.id}/teams`, { method: "DELETE", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ teamId }) });
+      const data = await response.json();
+      if (!response.ok) throw new Error(data?.error || "Failed to remove team from tournament.");
+      if (selectedTeamId === teamId) { setSelectedTeamId(null); setTeamPlayers([]); }
+      await refreshSelectedTournament(selectedTournament.id);
+    } catch (err) {
+      console.error(err);
+      setError(err instanceof Error ? err.message : "Failed to remove team from tournament.");
     }
   }
 
@@ -1290,7 +1420,7 @@ const [resumingMatchId, setResumingMatchId] =
       setNextOverBowlerBId("");
       setPageMode("LIVE_SCORING");
 
-      await refreshLiveInnings(currentInnings.id);
+      await refreshLiveInnings(currentInnings.id, match.id);
     } catch (err) {
       console.error(err);
       setError(
@@ -1833,7 +1963,7 @@ const [resumingMatchId, setResumingMatchId] =
         oversPerInnings % 2 === 1,
       );
       setPageMode("LIVE_SCORING");
-      void refreshLiveInnings(data.id);
+      void refreshLiveInnings(data.id, createdMatchId);
     } catch (err) {
       console.error(err);
 
@@ -1957,7 +2087,7 @@ const [resumingMatchId, setResumingMatchId] =
       setNextInningsBowlerBId("");
       setLiveTab("LIVE");
       setPageMode("LIVE_SCORING");
-      void refreshLiveInnings(data.id);
+      void refreshLiveInnings(data.id, createdMatchId);
     } catch (err) {
       console.error(err);
       setError(
@@ -1972,7 +2102,7 @@ const [resumingMatchId, setResumingMatchId] =
   // Live scoring
   // ---------------------------------------------------------
 
-  async function refreshLiveInnings(inningsId = liveInningsId) {
+  async function refreshLiveInnings(inningsId = liveInningsId, matchId = createdMatchId) {
     if (!inningsId) return;
 
     try {
@@ -1994,6 +2124,31 @@ const [resumingMatchId, setResumingMatchId] =
         : [];
 
       setLiveDeliveries(deliveries);
+
+      if (matchId) {
+        try {
+          const matchResponse = await fetch(`/api/matches/${matchId}`, { cache: "no-store" });
+          const matchData = await matchResponse.json();
+          const matchInnings = Array.isArray(matchData?.match?.innings)
+            ? matchData.match.innings
+            : Array.isArray(matchData?.innings)
+              ? matchData.innings
+              : [];
+          if (matchInnings.length > 0) {
+            setLiveInningsHistory(
+              matchInnings.map((item: { inningsNumber: number; totalRuns: number; wickets?: number; battingTeamId: string; target?: number | null }) => ({
+                inningsNumber: Number(item.inningsNumber),
+                totalRuns: Number(item.totalRuns ?? 0),
+                wickets: Number(item.wickets ?? 0),
+                battingTeamId: item.battingTeamId,
+                target: item.target ?? null,
+              })),
+            );
+          }
+        } catch (historyError) {
+          console.error("Failed to refresh innings history:", historyError);
+        }
+      }
       setLiveBattingTeamId(innings.battingTeamId ?? "");
       setLiveBowlingTeamId(innings.bowlingTeamId ?? "");
       setLiveRuns(Number(innings.totalRuns ?? 0));
@@ -2145,6 +2300,7 @@ const [resumingMatchId, setResumingMatchId] =
     setDismissedPlayerId(liveStrikerId);
     setRunOutDismissedEnd("STRIKER");
     setReplacementPlayerId("");
+    setFielderId("");
     setWicketType(extraType ? "RUN_OUT" : "BOWLED");
     setShowWicketPanel(true);
   }
@@ -2216,6 +2372,7 @@ const [resumingMatchId, setResumingMatchId] =
     wicketType?: string;
     dismissedPlayerId?: string;
     replacementPlayerId?: string;
+    fielderId?: string;
   }) {
     if (!liveInningsId) {
       setError("Live innings is not available.");
@@ -2268,6 +2425,17 @@ const [resumingMatchId, setResumingMatchId] =
       setLiveRuns(
         Number(data.innings?.totalRuns ?? data.totalRuns ?? liveRuns + totalRuns),
       );
+      if (input.isWicket && input.dismissedPlayerId) {
+        setLiveWicketDetailsByPlayerId((current) => ({
+          ...current,
+          [input.dismissedPlayerId!]: {
+            type: input.wicketType ?? "OUT",
+            bowlerId: liveBowlerId || null,
+            fielderId: input.fielderId ?? null,
+          },
+        }));
+      }
+
       setLiveWickets(
         Number(
           data.innings?.wickets ??
@@ -2410,7 +2578,7 @@ const [resumingMatchId, setResumingMatchId] =
       }
 
       setLiveUndoAvailable(true);
-      await refreshLiveInnings(liveInningsId);
+      await refreshLiveInnings(liveInningsId, createdMatchId);
 
       setShowWicketPanel(false);
       setShowCustomDeliveryPanel(false);
@@ -2440,7 +2608,7 @@ const [resumingMatchId, setResumingMatchId] =
       const data = await response.json();
       if (!response.ok) throw new Error(data?.error || "Failed to undo action.");
       setLiveUndoAvailable(false);
-      await refreshLiveInnings(liveInningsId);
+      await refreshLiveInnings(liveInningsId, createdMatchId);
     } catch (err) { setError(err instanceof Error ? err.message : "Failed to undo action."); }
     finally { setLiveLoading(false); }
   }
@@ -2459,7 +2627,7 @@ const [resumingMatchId, setResumingMatchId] =
       const data = await response.json();
       if (!response.ok) throw new Error(data?.error || "Failed to change player.");
       setManualActionMenu(null); setLiveUndoAvailable(true);
-      await refreshLiveInnings(liveInningsId);
+      await refreshLiveInnings(liveInningsId, createdMatchId);
     } catch (err) { setError(err instanceof Error ? err.message : "Failed to change player."); }
     finally { setLiveLoading(false); }
   }
@@ -2809,6 +2977,25 @@ const [resumingMatchId, setResumingMatchId] =
       return String(delivery.runsTotal);
     };
 
+    const liveDismissalText = (playerId: string) => {
+      const detail = liveWicketDetailsByPlayerId[playerId];
+      if (!detail) return "OUT";
+      const playerName = (id: string | null) =>
+        liveBowlingPlayers.find((player) => player.id === id)?.name ?? "Player";
+      const bowler = playerName(detail.bowlerId);
+      const fielder = detail.fielderId ? playerName(detail.fielderId) : "";
+      switch (detail.type) {
+        case "BOWLED": return `b ${bowler}`;
+        case "CAUGHT": return fielder ? `c ${fielder}   b ${bowler}` : `c b ${bowler}`;
+        case "LBW": return `lbw b ${bowler}`;
+        case "RUN_OUT": return fielder ? `run out (${fielder})` : "run out";
+        case "STUMPED": return fielder ? `st ${fielder}   b ${bowler}` : `st b ${bowler}`;
+        case "HIT_WICKET": return `hit wicket b ${bowler}`;
+        case "OVER_FENCE": return "over fence";
+        default: return "OUT";
+      }
+    };
+
     const recordButton = (label: string, className: string, action: () => void, disabled = false) => (
       <button
         type="button"
@@ -2949,11 +3136,11 @@ const [resumingMatchId, setResumingMatchId] =
                   <div className="grid grid-cols-[minmax(42px,auto)_minmax(0,1fr)_auto_minmax(0,1fr)_minmax(42px,auto)] items-center gap-1 px-1 text-sm">
                     <span className="truncate font-black text-blue-700">{selectedTournament?.teams.find((item) => item.team.id === teamAId)?.team.shortName ?? "T1"}</span>
                     <div className={`grid min-w-0 ${inningsPerMatch === 4 ? "grid-cols-2" : "grid-cols-1"}`}>
-                      {[1, ...(inningsPerMatch === 4 ? [3] : [])].map((inningNumber) => { const history = liveInningsHistory.find((item) => item.inningsNumber === inningNumber); const isCurrent = liveInningsNumber === inningNumber && liveBattingTeamId === teamAId; const value = isCurrent ? `${liveRuns}/${liveWickets}` : history?.battingTeamId === teamAId ? `${history.totalRuns}/-` : "- / -"; return <div key={`live-a-${inningNumber}`} className="text-center"><div className="whitespace-nowrap font-black text-slate-900">{value}</div><div className="text-[10px] font-medium text-slate-400">({inningNumber === 1 ? 1 : 2})</div></div>; })}
+                      {[1, ...(inningsPerMatch === 4 ? [3] : [])].map((inningNumber) => { const history = liveInningsHistory.find((item) => item.inningsNumber === inningNumber); const isCurrent = liveInningsNumber === inningNumber && liveBattingTeamId === teamAId; const value = isCurrent ? `${liveRuns}/${liveWickets}` : history?.battingTeamId === teamAId ? `${history.totalRuns}/${history.wickets ?? 0}` : "-/-"; return <div key={`live-a-${inningNumber}`} className="text-center"><div className="whitespace-nowrap font-black text-slate-900">{value}</div><div className="text-[10px] font-medium text-slate-400">({inningNumber === 1 ? 1 : 2})</div></div>; })}
                     </div>
                     <span className="px-1 text-xs font-black text-slate-400">VS</span>
                     <div className={`grid min-w-0 ${inningsPerMatch === 4 ? "grid-cols-2" : "grid-cols-1"}`}>
-                      {[2, ...(inningsPerMatch === 4 ? [4] : [])].map((inningNumber) => { const history = liveInningsHistory.find((item) => item.inningsNumber === inningNumber); const isCurrent = liveInningsNumber === inningNumber && liveBattingTeamId === teamBId; const value = isCurrent ? `${liveRuns}/${liveWickets}` : history?.battingTeamId === teamBId ? `${history.totalRuns}/-` : "- / -"; return <div key={`live-b-${inningNumber}`} className="text-center"><div className="whitespace-nowrap font-black text-slate-900">{value}</div><div className="text-[10px] font-medium text-slate-400">({inningNumber === 2 ? 1 : 2})</div></div>; })}
+                      {[2, ...(inningsPerMatch === 4 ? [4] : [])].map((inningNumber) => { const history = liveInningsHistory.find((item) => item.inningsNumber === inningNumber); const isCurrent = liveInningsNumber === inningNumber && liveBattingTeamId === teamBId; const value = isCurrent ? `${liveRuns}/${liveWickets}` : history?.battingTeamId === teamBId ? `${history.totalRuns}/${history.wickets ?? 0}` : "-/-"; return <div key={`live-b-${inningNumber}`} className="text-center"><div className="whitespace-nowrap font-black text-slate-900">{value}</div><div className="text-[10px] font-medium text-slate-400">({inningNumber === 2 ? 1 : 2})</div></div>; })}
                     </div>
                     <span className="truncate text-right font-black text-emerald-700">{selectedTournament?.teams.find((item) => item.team.id === teamBId)?.team.shortName ?? "T2"}</span>
                   </div>
@@ -3019,7 +3206,10 @@ const [resumingMatchId, setResumingMatchId] =
                           <div key={stat.player.id} className={`grid grid-cols-[1fr_50px_50px_45px_45px_65px] items-center gap-2 rounded-lg px-2 py-2 text-sm ${stat.player.id === liveStrikerId ? "bg-emerald-50" : ""}`}>
                             <div className="flex min-w-0 items-center gap-2">
                               <span className={`flex h-7 w-7 shrink-0 items-center justify-center rounded-full text-xs font-bold text-white [color-scheme:dark] ${stat.dismissed ? "bg-red-600" : "bg-emerald-600"}`}>{stat.player.jerseyNumber ?? ""}</span>
-                              <span className="truncate font-bold">{stat.player.name}{stat.player.id === liveStrikerId ? " *" : ""}{stat.dismissed ? " OUT" : ""}</span>
+                              <div className="min-w-0">
+                                <span className="block truncate font-bold">{stat.player.name}{stat.player.id === liveStrikerId ? " *" : ""}</span>
+                                <span className="block truncate whitespace-pre text-[9px] text-slate-400">{stat.dismissed ? liveDismissalText(stat.player.id) : "NOT OUT"}</span>
+                              </div>
                             </div>
                             <b>{stat.runs}</b><span>{stat.balls}</span><span>{stat.fours}</span><span>{stat.sixes}</span><span>{stat.strikeRate}</span>
                           </div>
@@ -3326,7 +3516,18 @@ const [resumingMatchId, setResumingMatchId] =
                 </p>
               )}
               <div className="mt-5 space-y-4">
-                <div><label htmlFor="wicketType" className="mb-2 block text-sm font-semibold">Wicket type</label><select id="wicketType" value={wicketType} onChange={(event) => { const value = event.target.value; setWicketType(value); if (value !== "RUN_OUT") { setRunOutDismissedEnd("STRIKER"); setDismissedPlayerId(liveStrikerId); } else { setRunOutDismissedEnd("STRIKER"); setDismissedPlayerId(liveStrikerId); } setReplacementPlayerId(""); }} className="h-12 w-full rounded-lg border border-slate-700 bg-slate-950 px-3 text-white [color-scheme:dark] [color-scheme:dark]"><option value="BOWLED" className="bg-slate-950 text-white">Bowled</option><option value="CAUGHT" className="bg-slate-950 text-white">Caught</option><option value="LBW" className="bg-slate-950 text-white">LBW</option><option value="RUN_OUT" className="bg-slate-950 text-white">Run Out</option><option value="STUMPED" className="bg-slate-950 text-white">Stumped</option><option value="HIT_WICKET" className="bg-slate-950 text-white">Hit Wicket</option><option value="OVER_FENCE" className="bg-slate-950 text-white">Over Fence</option></select></div>
+                <div><label htmlFor="wicketType" className="mb-2 block text-sm font-semibold">Wicket type</label><select id="wicketType" value={wicketType} onChange={(event) => { const value = event.target.value; setWicketType(value); if (value !== "RUN_OUT") { setRunOutDismissedEnd("STRIKER"); setDismissedPlayerId(liveStrikerId); } else { setRunOutDismissedEnd("STRIKER"); setDismissedPlayerId(liveStrikerId); } setReplacementPlayerId(""); setFielderId(""); }} className="h-12 w-full rounded-lg border border-slate-700 bg-slate-950 px-3 text-white [color-scheme:dark] [color-scheme:dark]"><option value="BOWLED" className="bg-slate-950 text-white">Bowled</option><option value="CAUGHT" className="bg-slate-950 text-white">Caught</option><option value="LBW" className="bg-slate-950 text-white">LBW</option><option value="RUN_OUT" className="bg-slate-950 text-white">Run Out</option><option value="STUMPED" className="bg-slate-950 text-white">Stumped</option><option value="HIT_WICKET" className="bg-slate-950 text-white">Hit Wicket</option><option value="OVER_FENCE" className="bg-slate-950 text-white">Over Fence</option></select></div>
+                {(wicketType === "CAUGHT" || wicketType === "RUN_OUT" || wicketType === "STUMPED") && (
+                  <div>
+                    <label htmlFor="fielderPlayer" className="mb-2 block text-sm font-semibold">{wicketType === "CAUGHT" ? "Caught by" : wicketType === "STUMPED" ? "Stumped by" : "Run out by"}</label>
+                    <select id="fielderPlayer" value={fielderId} onChange={(event) => setFielderId(event.target.value)} className="h-12 w-full rounded-lg border border-slate-700 bg-slate-950 px-3 text-white [color-scheme:dark]">
+                      <option value="">Select player</option>
+                      {liveBowlingPlayers.map((player) => (
+                        <option key={player.id} value={player.id}>{player.name}</option>
+                      ))}
+                    </select>
+                  </div>
+                )}
                 {wicketType === "RUN_OUT" && (
                   <div>
                     <p className="mb-2 block text-sm font-semibold">Who was run out?</p>
@@ -3342,9 +3543,19 @@ const [resumingMatchId, setResumingMatchId] =
                     </div>
                   </div>
                 )}
-                <div><label htmlFor="replacementPlayer" className="mb-2 block text-sm font-semibold">Replacement batsman</label><select id="replacementPlayer" value={replacementPlayerId} onChange={(event) => setReplacementPlayerId(event.target.value)} className="h-12 w-full rounded-lg border border-slate-700 bg-slate-950 px-3 text-white [color-scheme:dark] [color-scheme:dark]"><option value="">Select replacement</option>{nextBatsmen.filter((player) => player.id !== dismissedPlayerId).map((player) => <option key={player.id} value={player.id}>{player.name}</option>)}</select></div>
+                {nextBatsmen.length > 0 ? (
+        <div>
+          <label htmlFor="replacementPlayer" className="mb-2 block text-sm font-semibold">Replacement batsman</label>
+          <select id="replacementPlayer" value={replacementPlayerId} onChange={(event) => setReplacementPlayerId(event.target.value)} className="h-12 w-full rounded-lg border border-slate-700 bg-slate-950 px-3 text-white [color-scheme:dark]">
+            <option value="">Select replacement</option>
+            {nextBatsmen.map((player) => <option key={player.id} value={player.id}>{player.name}</option>)}
+          </select>
+        </div>
+      ) : (
+        <div className="rounded-lg border border-red-300 bg-red-50 px-4 py-3 text-sm font-black text-red-700">ALL OUT — no replacement batsman available.</div>
+      )}
               </div>
-              <div className="mt-6 grid grid-cols-2 gap-3"><button type="button" onClick={() => { setShowWicketPanel(false); setPendingWicketExtraType(null); setPendingWicketExtraRuns(0); setReplacementPlayerId(""); }} className="h-12 rounded-lg border border-slate-300 font-semibold [color-scheme:dark]">Cancel</button><button type="button" disabled={!replacementPlayerId || liveLoading} onClick={() => void recordLiveDelivery({ isWicket: true, wicketType, dismissedPlayerId, replacementPlayerId, ...(pendingWicketExtraType ? { runsExtra: pendingWicketExtraRuns, extraType: pendingWicketExtraType } : {}) })} className="h-12 rounded-lg bg-red-500 font-bold text-white disabled:opacity-40 [color-scheme:dark]">Confirm Wicket</button></div>
+              <div className="mt-6 grid grid-cols-2 gap-3"><button type="button" onClick={() => { setShowWicketPanel(false); setPendingWicketExtraType(null); setPendingWicketExtraRuns(0); setReplacementPlayerId(""); setFielderId(""); }} className="h-12 rounded-lg border border-slate-300 font-semibold [color-scheme:dark]">Cancel</button><button type="button" disabled={(nextBatsmen.length > 0 && !replacementPlayerId) || liveLoading || ((wicketType === "CAUGHT" || wicketType === "RUN_OUT" || wicketType === "STUMPED") && !fielderId)} onClick={() => void recordLiveDelivery({ isWicket: true, wicketType, dismissedPlayerId, replacementPlayerId, ...(fielderId ? { fielderId } : {}), ...(pendingWicketExtraType ? { runsExtra: pendingWicketExtraRuns, extraType: pendingWicketExtraType } : {}) })} className="h-12 rounded-lg bg-red-500 font-bold text-white disabled:opacity-40 [color-scheme:dark]">Confirm Wicket</button></div>
             </div>
           </div>
         )}
@@ -3600,6 +3811,19 @@ er-emerald-500/50 hover:bg-slate-950 [color-scheme:dark]"
                             ]
                           }
                         </p>
+
+              {tournament.status === "COMPLETED" && (
+                <div className="mt-2 flex flex-wrap items-center gap-2">
+                  <span className="rounded-full border border-emerald-500/30 bg-emerald-500/10 px-2.5 py-1 text-[11px] font-bold uppercase tracking-wide text-emerald-400">
+                    COMPLETED
+                  </span>
+                  {tournament.winner && (
+                    <span className="text-xs font-medium text-slate-300">
+                      Winner: {tournament.winner.name}
+                    </span>
+                  )}
+                </div>
+              )}
                       </div>
 
                       <div className="text-right text-xs text-slate-500">
@@ -3794,9 +4018,7 @@ late-800 disabled:opacity-50 [color-scheme:dark]"
       ) ?? [],
     );
 
-    const availableExistingTeams = globalTeams.filter(
-      (team) => !tournamentTeamIds.has(team.id),
-    );
+    const availableExistingTeams = globalTeams;
 
     return (
       <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-5 backdrop-blur-sm">
@@ -3874,17 +4096,19 @@ late-800 disabled:opacity-50 [color-scheme:dark]"
                         ? "No teams available"
                         : "Select a team"}
                   </option>
-                  {availableExistingTeams.map((team) => (
-                    <option key={team.id} value={team.id}>
-                      {team.name}
-                      {team.shortName
-                        ? ` (${team.shortName})`
-                        : ""}
-                    </option>
-                  ))}
+                  {availableExistingTeams.map((team) => {
+                    const alreadyInTournament = tournamentTeamIds.has(team.id);
+                    return (
+                      <option key={team.id} value={team.id} disabled={alreadyInTournament}>
+                        {team.name}
+                        {team.shortName ? ` (${team.shortName})` : ""}
+                        {alreadyInTournament ? " - already in tournament" : ""}
+                      </option>
+                    );
+                  })}
                 </select>
                 <p className="mt-2 text-xs text-slate-500">
-                  Teams already in this tournament are hidden.
+                  All existing teams are shown. Teams already in this tournament are disabled.
                 </p>
               </div>
             </div>
@@ -3983,189 +4207,86 @@ late-800 disabled:opacity-50 [color-scheme:dark]"
   function AddPlayerModal() {
     const selectedTeam =
       selectedTournament?.teams.find(
-        (tournamentTeam) =>
-          tournamentTeam.team.id === selectedTeamId,
+        (tournamentTeam) => tournamentTeam.team.id === selectedTeamId,
       )?.team ?? null;
 
-    if (!showAddPlayer || !selectedTeam) {
-      return null;
-    }
+    const currentTeamPlayerIds = new Set(
+      teamPlayers.map((membership) => membership.player.id),
+    );
+
+    const availableExistingPlayers = availablePlayers.filter(
+      (player) => !currentTeamPlayerIds.has(player.id),
+    );
+
+    if (!showAddPlayer || !selectedTeam) return null;
+
+    const close = () => {
+      setShowAddPlayer(false);
+      setEditingPlayerId(null);
+      setSelectedExistingPlayerId("");
+      setAddPlayerMode("EXISTING");
+      resetPlayerForm();
+      setError("");
+    };
 
     return (
       <div className="fixed inset-0 z-[80] flex items-center justify-center bg-black/70 p-5 backdrop-blur-sm">
         <div className="w-full max-w-lg rounded-3xl border border-slate-700 bg-slate-900 p-6 shadow-2xl sm:p-8 [color-scheme:dark]">
           <div className="mb-6">
-            <div className="mb-4 flex h-12 w-12 items-center justify-center rounded-2xl bg-emerald-500/10 text-2xl">
-              PLAYER
-            </div>
-
-            <h2 className="text-xl font-semibold">
-              {editingPlayerId
-                ? "Edit Player"
-                : "Add Player"}
-            </h2>
-
+            <h2 className="text-xl font-semibold">{editingPlayerId ? "Edit Player" : "Add Player"}</h2>
             <p className="mt-2 text-sm text-slate-400">
-              {editingPlayerId
-                ? "Update player details for "
-                : "Add a player to "}
-              <span className="font-medium text-slate-300 [color-scheme:dark]">
-                {selectedTeam.name}
-              </span>
-              .
+              {editingPlayerId ? "Update player details for " : "Add a player to "}
+              <span className="font-medium text-slate-300">{selectedTeam.name}</span>.
             </p>
           </div>
 
-          <div className="space-y-4">
-            <div>
-              <label
-                htmlFor="playerName"
-                className="mb-2 block text-sm font-medium text-slate-300 [color-scheme:dark]"
-              >
-                Player Name
-              </label>
-
-              <input
-                id="playerName"
-                type="text"
-                autoFocus
-                value={playerName}
-                onChange={(event) =>
-                  setPlayerName(event.target.value)
-                }
-                placeholder="e.g. Rahul Sharma"
-                className="h-12 w-full rounded-xl border border-slate-700 bg-slate-950 px-4 text-white outline-none placeholder:text-slate-600 focus:border-emerald-500"
-              />
+          {!editingPlayerId && (
+            <div className="mb-5 grid grid-cols-2 rounded-xl border border-slate-700 bg-slate-950 p-1">
+              <button type="button" onClick={() => { setAddPlayerMode("EXISTING"); setSelectedExistingPlayerId(""); setError(""); void loadAvailablePlayers(); }} className={`rounded-lg px-3 py-2 text-sm font-medium ${addPlayerMode === "EXISTING" ? "bg-emerald-500 text-slate-950" : "text-slate-400"}`}>Existing Player</button>
+              <button type="button" onClick={() => { setAddPlayerMode("NEW"); setSelectedExistingPlayerId(""); resetPlayerForm(); setError(""); }} className={`rounded-lg px-3 py-2 text-sm font-medium ${addPlayerMode === "NEW" ? "bg-emerald-500 text-slate-950" : "text-slate-400"}`}>Create New</button>
             </div>
+          )}
 
+          {!editingPlayerId && addPlayerMode === "EXISTING" ? (
             <div>
-              <label
-                htmlFor="playerJerseyNumber"
-                className="mb-2 block text-sm font-medium text-slate-300 [color-scheme:dark]"
-              >
-                Jersey Number
-              </label>
-
-              <input
-                id="playerJerseyNumber"
-                type="text"
-                inputMode="numeric"
-                pattern="[0-9]*"
-                value={playerJerseyNumber}
-                onChange={(event) =>
-                  setPlayerJerseyNumber(
-                    event.target.value.replace(/\D/g, ""),
-                  )
-                }
-                placeholder="Optional"
-                className="h-12 w-full rounded-xl border border-slate-700 bg-slate-950 px-4 text-white outline-none placeholder:text-slate-600 focus:border-emerald-500"
-              />
+              <label htmlFor="existingPlayer" className="mb-2 block text-sm font-medium text-slate-300">Select Existing Player</label>
+              <select id="existingPlayer" autoFocus value={selectedExistingPlayerId} onChange={(event) => setSelectedExistingPlayerId(event.target.value)} disabled={loadingAvailablePlayers || availableExistingPlayers.length === 0} className="h-12 w-full rounded-xl border border-slate-700 bg-slate-950 px-4 text-white [color-scheme:dark]">
+                <option value="">{loadingAvailablePlayers ? "Loading players..." : availableExistingPlayers.length === 0 ? "No existing players available" : "Select a player"}</option>
+                {availableExistingPlayers.map((player) => (
+                  <option key={player.id} value={player.id}>
+                    {player.jerseyNumber != null ? `#${player.jerseyNumber} ` : ""}{player.name}
+                  </option>
+                ))}
+              </select>
+              <p className="mt-2 text-xs text-slate-500">Players already registered with {selectedTeam.name} are hidden.</p>
             </div>
-
-            <div className="grid gap-4 sm:grid-cols-2">
+          ) : (
+            <div className="space-y-4">
               <div>
-                <label
-                  htmlFor="playerBattingStyle"
-                  className="mb-2 block text-sm font-medium text-slate-300 [color-scheme:dark]"
-                >
-                  Batting Hand
-                </label>
-
-                <select
-                  id="playerBattingStyle"
-                  value={playerBattingStyle}
-                  onChange={(event) =>
-                    setPlayerBattingStyle(
-                      event.target.value,
-                    )
-                  }
-                  className="h-12 w-full rounded-xl border border-slate-700 bg-slate-950 px-4 text-white outline-none focus:border-emerald-500 [color-scheme:dark]"
-                >
-                  <option value="">
-                    Select hand
-                  </option>
-                  <option value="Right-handed">
-                    Right-handed
-                  </option>
-                  <option value="Left-handed">
-                    Left-handed
-                  </option>
-                </select>
+                <label htmlFor="playerName" className="mb-2 block text-sm font-medium text-slate-300">Player Name</label>
+                <input id="playerName" type="text" autoFocus value={playerName} onChange={(event) => setPlayerName(event.target.value)} placeholder="e.g. Rahul Sharma" className="h-12 w-full rounded-xl border border-slate-700 bg-slate-950 px-4 text-white placeholder:text-slate-600" />
               </div>
-
               <div>
-                <label
-                  htmlFor="playerBowlingStyle"
-                  className="mb-2 block text-sm font-medium text-slate-300 [color-scheme:dark]"
-                >
-                  Bowling Arm
-                </label>
-
-                <select
-                  id="playerBowlingStyle"
-                  value={playerBowlingStyle}
-                  onChange={(event) =>
-                    setPlayerBowlingStyle(
-                      event.target.value,
-                    )
-                  }
-                  className="h-12 w-full rounded-xl border border-slate-700 bg-slate-950 px-4 text-white outline-none focus:border-emerald-500 [color-scheme:dark]"
-                >
-                  <option value="">
-                    Select arm
-                  </option>
-                  <option value="Right-arm">
-                    Right-arm
-                  </option>
-                  <option value="Left-arm">
-                    Left-arm
-                  </option>
-                </select>
+                <label htmlFor="playerJerseyNumber" className="mb-2 block text-sm font-medium text-slate-300">Jersey Number</label>
+                <input id="playerJerseyNumber" type="text" inputMode="numeric" pattern="[0-9]*" value={playerJerseyNumber} onChange={(event) => setPlayerJerseyNumber(event.target.value.replace(/\D/g, ""))} placeholder="Optional" className="h-12 w-full rounded-xl border border-slate-700 bg-slate-950 px-4 text-white placeholder:text-slate-600" />
+              </div>
+              <div className="grid gap-4 sm:grid-cols-2">
+                <div>
+                  <label htmlFor="playerBattingStyle" className="mb-2 block text-sm font-medium text-slate-300">Batting Hand</label>
+                  <select id="playerBattingStyle" value={playerBattingStyle} onChange={(event) => setPlayerBattingStyle(event.target.value)} className="h-12 w-full rounded-xl border border-slate-700 bg-slate-950 px-4 text-white [color-scheme:dark]"><option value="">Select hand</option><option value="Right-handed">Right-handed</option><option value="Left-handed">Left-handed</option></select>
+                </div>
+                <div>
+                  <label htmlFor="playerBowlingStyle" className="mb-2 block text-sm font-medium text-slate-300">Bowling Arm</label>
+                  <select id="playerBowlingStyle" value={playerBowlingStyle} onChange={(event) => setPlayerBowlingStyle(event.target.value)} className="h-12 w-full rounded-xl border border-slate-700 bg-slate-950 px-4 text-white [color-scheme:dark]"><option value="">Select arm</option><option value="Right-arm">Right-arm</option><option value="Left-arm">Left-arm</option></select>
+                </div>
               </div>
             </div>
-          </div>
+          )}
 
           <div className="mt-8 flex gap-3">
-            <button
-              type="button"
-              disabled={
-                loadingPlayerCreate ||
-                loadingPlayerUpdate
-              }
-              onClick={() => {
-                setShowAddPlayer(false);
-                setEditingPlayerId(null);
-                resetPlayerForm();
-                setError("");
-              }}
-              className="h-12 flex-1 rounded-xl border border-slate-700 px-5 font-medium text-slate-300 hover:bg-slate-800 disabled:opacity-50 [color-scheme:dark]"
-            >
-              Cancel
-            </button>
-
-            <button
-              type="button"
-              disabled={
-                loadingPlayerCreate ||
-                loadingPlayerUpdate ||
-                !playerName.trim()
-              }
-              onClick={() =>
-                void (
-                  editingPlayerId
-                    ? updatePlayerForTeam()
-                    : createPlayerForTeam()
-                )
-              }
-              className="h-12 flex-1 rounded-xl bg-emerald-500 px-5 font-semibold text-slate-950 hover:bg-emerald-400 disabled:cursor-not-allowed disabled:bg-slate-800 disabled:text-slate-500"
-            >
-              {editingPlayerId
-                ? loadingPlayerUpdate
-                  ? "Saving..."
-                  : "Save Changes"
-                : loadingPlayerCreate
-                  ? "Adding..."
-                  : "Add Player"}
+            <button type="button" disabled={loadingPlayerCreate || loadingPlayerUpdate} onClick={close} className="h-12 flex-1 rounded-xl border border-slate-700 px-5 font-medium text-slate-300 hover:bg-slate-800 disabled:opacity-50">Cancel</button>
+            <button type="button" disabled={loadingPlayerCreate || loadingPlayerUpdate || (editingPlayerId ? !playerName.trim() : addPlayerMode === "EXISTING" ? !selectedExistingPlayerId : !playerName.trim())} onClick={() => void (editingPlayerId ? updatePlayerForTeam() : addPlayerMode === "EXISTING" ? addExistingPlayerToTeam() : createPlayerForTeam())} className="h-12 flex-1 rounded-xl bg-emerald-500 px-5 font-semibold text-slate-950 hover:bg-emerald-400 disabled:cursor-not-allowed disabled:bg-slate-800 disabled:text-slate-500">
+              {editingPlayerId ? (loadingPlayerUpdate ? "Saving..." : "Save Changes") : addPlayerMode === "EXISTING" ? (loadingPlayerCreate ? "Adding..." : "Add Existing Player") : (loadingPlayerCreate ? "Adding..." : "Add Player")}
             </button>
           </div>
         </div>
@@ -4456,12 +4577,7 @@ late-800 disabled:opacity-50 [color-scheme:dark]"
 
             <button
               type="button"
-              onClick={() => {
-                setTeamName("");
-                setTeamShortName("");
-                setError("");
-                setShowAddTeam(true);
-              }}
+              onClick={openAddTeamModal}
               className="h-10 rounded-xl border border-emerald-500/50 px-4 text-sm font-semibold text-emerald-400 transition 
 hover:bg-emerald-500/10 [color-scheme:dark]"
             >
@@ -4486,12 +4602,7 @@ hover:bg-emerald-500/10 [color-scheme:dark]"
 
               <button
                 type="button"
-                onClick={() => {
-                  setTeamName("");
-                  setTeamShortName("");
-                  setError("");
-                  setShowAddTeam(true);
-                }}
+                onClick={openAddTeamModal}
                 className="mt-5 rounded-xl bg-emerald-500 px-5 py-2.5 text-sm font-semibold text-slate-950 hover:bg-emerald-4
 00"
               >
@@ -4530,8 +4641,11 @@ hover:bg-emerald-500/10 [color-scheme:dark]"
                         )}
                       </div>
 
-                      <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-slate-800 text-lg">
-                        {String.fromCodePoint(0x1F3CF)}
+                      <div className="flex shrink-0 items-center gap-2">
+                        <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-slate-800 text-lg">
+                          {String.fromCodePoint(0x1F3CF)}
+                        </div>
+                        <button type="button" title="Remove team from this tournament" aria-label={`Remove ${tournamentTeam.team.name} from this tournament`} onClick={(event) => { event.stopPropagation(); void removeTeamFromCurrentTournament(tournamentTeam.team.id, tournamentTeam.team.name); }} className="flex h-9 w-9 items-center justify-center rounded-xl border border-red-500/30 bg-red-500/10 text-lg font-bold text-red-400 transition hover:bg-red-500/20">−</button>
                       </div>
                     </div>
 
@@ -4570,12 +4684,7 @@ hover:bg-emerald-500/10 [color-scheme:dark]"
 
               <button
                 type="button"
-                onClick={() => {
-                  setEditingPlayerId(null);
-                  resetPlayerForm();
-                  setError("");
-                  setShowAddPlayer(true);
-                }}
+                onClick={openAddPlayerModal}
                 className="h-10 rounded-xl bg-emerald-500 px-4 text-sm font-semibold text-slate-950 transition hover:bg-emerald-400"
               >
                 + Add Player
@@ -4661,14 +4770,9 @@ hover:bg-emerald-500/10 [color-scheme:dark]"
                           className="flex h-10 items-center gap-2 rounded-xl border border-slate-700 bg-slate-800 px-3 text-sm font-medium text-slate-300 transition hover:border-emerald-500/50 hover:bg-emerald-500/10 hover:text-emerald-400 [color-scheme:dark]"
                         >
                           <span>EDIT</span>
-                          <span className="hidden sm:inline">
-                            Edit
-                          </span>
                         </button>
 
-                        <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-slate-800 text-lg">
-                          PLAYER
-                        </div>
+                        <button type="button" title="Remove player from current roster" aria-label={`Remove ${membership.player.name} from current roster`} onClick={() => void removePlayerFromCurrentRoster(membership.player.id, membership.player.name)} className="flex h-10 w-10 items-center justify-center rounded-xl border border-red-500/30 bg-red-500/10 text-xl font-bold text-red-400 transition hover:bg-red-500/20">−</button>
                       </div>
                     </div>
                   </div>
@@ -4703,87 +4807,84 @@ hover:bg-emerald-500/10 [color-scheme:dark]"
               const innings = [...match.innings].sort(
                 (a, b) => a.inningsNumber - b.inningsNumber,
               );
+              const firstInnings = innings[0];
+              const lastInnings = innings[innings.length - 1];
+              const expanded = expandedMatchId === match.id;
 
               const formatScore = (item: (typeof innings)[number]) =>
                 `${item.totalRuns}/${item.wickets} (${Math.floor(item.legalBalls / 6)}.${item.legalBalls % 6})`;
 
-              const firstInnings = innings[0];
-              const secondInnings = innings[1];
-              const winnerId =
-                firstInnings && secondInnings
-                  ? firstInnings.totalRuns > secondInnings.totalRuns
-                    ? firstInnings.battingTeamId
-                    : firstInnings.totalRuns < secondInnings.totalRuns
-                      ? secondInnings.battingTeamId
-                      : null
-                  : null;
+              const teamName = (teamId: string) =>
+                teamId === match.teamA.id ? match.teamA.name : match.teamB.name;
 
               const winnerName =
-                winnerId === match.teamA.id
+                match.winnerId === match.teamA.id
                   ? match.teamA.name
-                  : winnerId === match.teamB.id
+                  : match.winnerId === match.teamB.id
                     ? match.teamB.name
                     : null;
+
 
               return (
                 <div
                   key={match.id}
-                  className="rounded-2xl border border-slate-800 bg-slate-950 p-4 [color-scheme:dark]"
+                  className={`rounded-2xl border border-slate-800 bg-slate-950 transition ${expanded ? "p-4" : "p-3"}`}
                 >
-                  <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-                    <div className="min-w-0 flex-1">
-                      <div className="flex items-center justify-between gap-3">
-                        <p className="truncate text-lg font-bold text-slate-100">
-                          {match.teamA.name} <span className="text-slate-600">vs</span> {match.teamB.name}
-                        </p>
+                  <button
+                    type="button"
+                    onClick={() => setExpandedMatchId(expanded ? null : match.id)}
+                    className="w-full text-left"
+                    aria-expanded={expanded}
+                  >
+                    <div className="flex min-w-0 items-center justify-between gap-3">
+                      <p className="truncate text-base font-bold text-slate-100">
+                        {match.teamA.name} <span className="text-slate-600">vs</span> {match.teamB.name}
+                      </p>
+                      <div className="flex shrink-0 items-center gap-3">
                         <span className="whitespace-nowrap text-xs font-medium text-slate-500">
                           {new Date(match.createdAt).toLocaleDateString("en-IN", { day: "2-digit", month: "short", year: "numeric" })}
                         </span>
-                      </div>
-
-                      {innings.length > 0 ? (
-                        <div className="mt-3 space-y-1 text-sm">
-                          {innings.map((item) => {
-                            const battingTeamName =
-                              item.battingTeamId === match.teamA.id
-                                ? match.teamA.name
-                                : match.teamB.name;
-
-                            return (
-                              <div key={item.id} className="flex flex-wrap items-center gap-x-2 gap-y-1">
-                                <span className="font-medium text-slate-300">{battingTeamName}</span>
-                                <span className="font-bold text-slate-100">{formatScore(item)}</span>
-                              </div>
-                            );
-                          })}
-                        </div>
-                      ) : (
-                        <p className="mt-2 text-sm text-slate-500">No innings data available.</p>
-                      )}
-
-                      <div className="mt-3 flex flex-wrap items-center gap-2 text-xs">
-                        {winnerName ? (
-                          <span className="rounded-lg bg-emerald-500/10 px-2.5 py-1 font-semibold text-emerald-400">
-                            {winnerName} won
-                          </span>
-                        ) : (
-                          <span className="rounded-lg bg-slate-800 px-2.5 py-1 font-semibold text-slate-400">
-                            Match drawn / tied
-                          </span>
-                        )}
-                        <span className="rounded-lg bg-slate-800 px-2.5 py-1 text-slate-500">
-                          {match.oversPerInnings} overs
-                        </span>
-                        <span className="rounded-lg bg-slate-800 px-2.5 py-1 text-slate-500">
-                          {match.inningsPerMatch} innings
-                        </span>
+                        <span className="text-xs text-slate-500">{expanded ? "Collapse" : "Expand"}</span>
                       </div>
                     </div>
+                  </button>
 
-                    <button type="button" onClick={() => void openScorecard(match.id)} disabled={loadingScorecard} className="h-11 shrink-0 rounded-xl border border-emerald-500/40 bg-emerald-500/10 px-5 font-semibold text-emerald-400 transition hover:bg-emerald-500/20 disabled:opacity-50">
-                      {loadingScorecard ? "Loading..." : "Scorecard"}
-                    </button>
-                  </div>
+                  {expanded && (
+                    <div className="mt-3 border-t border-slate-800 pt-3">
+                      <div className="space-y-1.5 text-sm">
+                        {innings.map((item) => (
+                          <div key={item.id} className="flex flex-wrap items-center justify-between gap-2">
+                            <span className="text-slate-300">{teamName(item.battingTeamId)}</span>
+                            <span className="font-bold text-slate-100">{formatScore(item)}</span>
+                          </div>
+                        ))}
+                      </div>
+
+                      <div className="mt-3 flex flex-wrap items-center justify-between gap-2 border-t border-slate-800 pt-3 text-xs">
+                        <div className="flex flex-wrap items-center gap-2">
+                          {winnerName ? (
+                            <span className="rounded-lg bg-emerald-500/10 px-2.5 py-1 font-semibold text-emerald-400">{winnerName} won</span>
+                          ) : (
+                            <span className="rounded-lg bg-slate-800 px-2.5 py-1 font-semibold text-slate-400">Match drawn / tied</span>
+                          )}
+                          <span className="rounded-lg bg-slate-800 px-2.5 py-1 text-slate-500">{match.oversPerInnings} overs</span>
+                          <span className="rounded-lg bg-slate-800 px-2.5 py-1 text-slate-500">{match.inningsPerMatch} innings</span>
+                        </div>
+
+                        <button
+                          type="button"
+                          onClick={(event) => {
+                            event.stopPropagation();
+                            void openScorecard(match.id);
+                          }}
+                          disabled={loadingScorecard}
+                          className="h-10 rounded-xl border border-emerald-500/40 bg-emerald-500/10 px-4 font-semibold text-emerald-400 transition hover:bg-emerald-500/20 disabled:opacity-50"
+                        >
+                          {loadingScorecard ? "Loading..." : "Scorecard"}
+                        </button>
+                      </div>
+                    </div>
+                  )}
                 </div>
               );
             })}
@@ -5952,9 +6053,25 @@ r-emerald-500 [color-scheme:dark]"
               const teamName = (id: string) => id === match.teamA.id ? match.teamA.name : match.teamB.name;
               const teamShortName = (id: string) => id === match.teamA.id ? (match.teamA.shortName ?? match.teamA.name) : (match.teamB.shortName ?? match.teamB.name);
               const playerName = (id: string) => match.players.find((item) => item.playerId === id)?.player.name ?? "Player";
+              const dismissalText = (wicket: NonNullable<(typeof match.innings)[number]["deliveries"][number]["wicket"]>) => {
+                const bowler = wicket.bowlerId ? playerName(wicket.bowlerId) : "Bowler";
+                const fielder = wicket.fielderId ? playerName(wicket.fielderId) : "";
+                switch (wicket.type) {
+                  case "BOWLED": return `b ${bowler}`;
+                  case "CAUGHT": return fielder ? `c ${fielder}\u00a0\u00a0\u00a0b ${bowler}` : `c b ${bowler}`;
+                  case "LBW": return `lbw b ${bowler}`;
+                  case "RUN_OUT": return fielder ? `run out (${fielder})` : "run out";
+                  case "STUMPED": return fielder ? `st ${fielder}\u00a0\u00a0\u00a0b ${bowler}` : `st b ${bowler}`;
+                  case "HIT_WICKET": return `hit wicket b ${bowler}`;
+                  case "RETIRED_OUT": return "retired out";
+                  case "RETIRED_HURT": return "retired hurt";
+                  case "OVER_FENCE": return "over fence";
+                  default: return "out";
+                }
+              };
               const teamAInnings = match.innings.filter((item) => item.battingTeamId === match.teamA.id).sort((a, b) => a.inningsNumber - b.inningsNumber);
               const teamBInnings = match.innings.filter((item) => item.battingTeamId === match.teamB.id).sort((a, b) => a.inningsNumber - b.inningsNumber);
-              const scoreText = (inning: (typeof match.innings)[number] | undefined) => inning ? `${inning.totalRuns}/${inning.wickets}` : "- / -";
+              const scoreText = (inning: (typeof match.innings)[number] | undefined) => inning ? `${inning.totalRuns}/${inning.wickets}` : "-/-";
               const orderedInnings = [...match.innings].sort((a, b) => a.inningsNumber - b.inningsNumber);
               const finalInning = orderedInnings[orderedInnings.length - 1];
               const targetInning = match.innings.find((item) => item.target != null) ?? finalInning;
@@ -6033,7 +6150,7 @@ r-emerald-500 [color-scheme:dark]"
                       for (const x of i.deliveries) {
                         const a = bat.get(x.strikerId) || { r: 0, b: 0, f: 0, s: 0, out: false, d: "" };
                         a.r += x.runsBat; if (x.isLegal) a.b++; if (x.runsBat === 4) a.f++; if (x.runsBat === 6) a.s++;
-                        if (x.isWicket && x.wicket?.dismissedPlayerId === x.strikerId) { a.out = true; a.d = x.wicket.type.replaceAll("_", " "); fall.push({ p: playerName(x.strikerId), score: score + x.runsTotal, over: `${x.overNumber}.${x.ballNumber}` }); }
+                        if (x.isWicket && x.wicket?.dismissedPlayerId === x.strikerId) { a.out = true; a.d = dismissalText(x.wicket); fall.push({ p: playerName(x.strikerId), score: score + x.runsTotal, over: `${x.overNumber}.${x.ballNumber}` }); }
                         bat.set(x.strikerId, a);
                         const q = bowl.get(x.bowlerId) || { b: 0, r: 0, w: 0 }; if (x.isLegal) q.b++; q.r += x.runsTotal; if (x.isWicket && x.wicket?.bowlerId === x.bowlerId) q.w++; bowl.set(x.bowlerId, q); score += x.runsTotal;
                       }
@@ -6041,7 +6158,7 @@ r-emerald-500 [color-scheme:dark]"
                         <section key={i.id} className="rounded-xl border border-slate-200 bg-white p-3 sm:p-4">
                           <div className="flex items-center justify-between border-b border-slate-200 pb-2"><div><p className="text-[10px] font-bold uppercase tracking-wide text-slate-400">Innings {i.inningsNumber}</p><h3 className="font-black">{teamName(i.battingTeamId)}</h3></div><b className="text-xl">{i.totalRuns}/{i.wickets}</b></div>
                           <div className="mt-3 grid gap-4 lg:grid-cols-2">
-                            <div><div className="mb-1 grid grid-cols-[1fr_40px_40px_35px_35px_50px] text-[10px] font-bold uppercase text-slate-400"><span>Batter</span><span>R</span><span>B</span><span>4s</span><span>6s</span><span>SR</span></div>{Array.from(bat).map(([id, v]) => <div key={id} className="grid grid-cols-[1fr_40px_40px_35px_35px_50px] items-center py-1.5 text-xs"><div><b>{playerName(id)}{!v.out ? " *" : ""}</b><p className="text-[9px] uppercase text-slate-400">{v.out ? v.d : "not out"}</p></div><b>{v.r}</b><span>{v.b}</span><span>{v.f}</span><span>{v.s}</span><span>{v.b ? (v.r / v.b * 100).toFixed(2) : "0.00"}</span></div>)}</div>
+                            <div><div className="mb-1 grid grid-cols-[1fr_40px_40px_35px_35px_50px] text-[10px] font-bold uppercase text-slate-400"><span>Batter</span><span>R</span><span>B</span><span>4s</span><span>6s</span><span>SR</span></div>{Array.from(bat).map(([id, v]) => <div key={id} className="grid grid-cols-[1fr_40px_40px_35px_35px_50px] items-center py-1.5 text-xs"><div><b>{playerName(id)}{!v.out ? " *" : ""}</b><p className="whitespace-pre text-[9px] text-slate-400">{v.out ? v.d : "NOT OUT"}</p></div><b>{v.r}</b><span>{v.b}</span><span>{v.f}</span><span>{v.s}</span><span>{v.b ? (v.r / v.b * 100).toFixed(2) : "0.00"}</span></div>)}</div>
                             <div><div className="mb-1 grid grid-cols-[1fr_40px_40px_40px_50px] text-[10px] font-bold uppercase text-slate-400"><span>Bowler</span><span>O</span><span>R</span><span>W</span><span>ECON</span></div>{Array.from(bowl).map(([id, v]) => <div key={id} className="grid grid-cols-[1fr_40px_40px_40px_50px] items-center py-1.5 text-xs"><b>{playerName(id)}</b><span>{Math.floor(v.b / 6)}.{v.b % 6}</span><span>{v.r}</span><span>{v.w}</span><span>{v.b ? (v.r / v.b * 6).toFixed(2) : "0.00"}</span></div>)}</div>
                           </div>
                           {fall.length > 0 && <div className="mt-3 border-t border-slate-200 pt-2"><p className="text-[10px] font-bold uppercase text-slate-400">Fall of Wickets</p><div className="mt-1 flex flex-wrap gap-1.5">{fall.map((f, n) => <span key={n} className="rounded-md bg-slate-100 px-2 py-1 text-[10px]"><b>{n + 1}-{f.score}</b> {f.p} ({f.over})</span>)}</div></div>}

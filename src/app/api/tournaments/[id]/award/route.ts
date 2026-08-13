@@ -22,17 +22,45 @@ export async function PUT(request: Request, { params }: RouteContext) {
 
     const body = await request.json();
     const playerId = typeof body.playerId === "string" ? body.playerId : "";
-    const membership = await prisma.tournamentTeamPlayer.findFirst({ where: { playerId, tournamentTeam: { tournamentId: id } } });
-    if (!membership) return NextResponse.json({ error: "Player did not participate in this tournament." }, { status: 400 });
+    if (!playerId) return NextResponse.json({ error: "Select a player first." }, { status: 400 });
+
+    // A player participates in the tournament if they were actually selected
+    // for at least one completed match in this tournament. This covers players
+    // added/selected at match level even when the tournament roster was not
+    // updated later.
+    const participation = await prisma.matchPlayer.findFirst({
+      where: {
+        playerId,
+        match: {
+          tournamentId: id,
+          status: "COMPLETED",
+        },
+      },
+      select: { id: true },
+    });
+
+    if (!participation) {
+      return NextResponse.json({ error: "Player did not participate in this tournament." }, { status: 400 });
+    }
 
     const shortlist = await getTournamentAwardShortlist(id);
     const suggestedIds = shortlist.candidates.map((candidate) => candidate.player.id);
     const award = await prisma.tournamentAward.upsert({
       where: { tournamentId: id },
-      create: { tournamentId: id, suggestedPlayerIds: JSON.stringify(suggestedIds), suggestedPlayers: { connect: suggestedIds.map((playerId) => ({ id: playerId })) }, awardedPlayerId: playerId },
-      update: { suggestedPlayerIds: JSON.stringify(suggestedIds), suggestedPlayers: { set: suggestedIds.map((playerId) => ({ id: playerId })) }, awardedPlayerId: playerId },
+      create: {
+        tournamentId: id,
+        suggestedPlayerIds: JSON.stringify(suggestedIds),
+        suggestedPlayers: { connect: suggestedIds.map((candidateId) => ({ id: candidateId })) },
+        awardedPlayerId: playerId,
+      },
+      update: {
+        suggestedPlayerIds: JSON.stringify(suggestedIds),
+        suggestedPlayers: { set: suggestedIds.map((candidateId) => ({ id: candidateId })) },
+        awardedPlayerId: playerId,
+      },
       include: { awardedPlayer: true, suggestedPlayers: true },
     });
+
     return NextResponse.json(award);
   } catch (error) {
     return NextResponse.json({ error: error instanceof Error ? error.message : "Failed to save Man of the Series." }, { status: 400 });

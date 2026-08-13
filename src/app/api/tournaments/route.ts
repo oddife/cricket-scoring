@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 
 import { prisma } from "@/lib/prisma";
+import { getLeagueTable } from "@/lib/league";
 
 const DEFAULT_USER_EMAIL = "scorer@local";
 const DEFAULT_USER_NAME = "Cricket Scorer";
@@ -36,6 +37,78 @@ function integerOrDefault(value: unknown, fallback: number) {
   return Number.isInteger(parsed) && parsed >= 0 ? parsed : fallback;
 }
 
+async function getTournamentWinner(tournamentId: string, format: string) {
+  const knockoutMatches = await prisma.match.findMany({
+    where: {
+      tournamentId,
+      status: "COMPLETED",
+      stage: "KNOCKOUT",
+      winnerId: { not: null },
+    },
+    orderBy: [
+      { matchNumber: "desc" },
+      { createdAt: "desc" },
+    ],
+    take: 1,
+    include: {
+      winner: {
+        select: {
+          id: true,
+          name: true,
+          shortName: true,
+          logo: true,
+        },
+      },
+    },
+  });
+
+  if (knockoutMatches[0]?.winner) {
+    return knockoutMatches[0].winner;
+  }
+
+  if (format === "LEAGUE" || format === "LEAGUE_KNOCKOUT") {
+    const table = await getLeagueTable(tournamentId);
+    if (table.length > 0 && table[0].played > 0) {
+      return {
+        id: table[0].teamId,
+        name: table[0].teamName,
+        shortName: table[0].shortName,
+        logo: null,
+      };
+    }
+  }
+
+  const latestWinner = await prisma.match.findFirst({
+    where: {
+      tournamentId,
+      status: "COMPLETED",
+      winnerId: { not: null },
+    },
+    orderBy: { createdAt: "desc" },
+    include: {
+      winner: {
+        select: {
+          id: true,
+          name: true,
+          shortName: true,
+          logo: true,
+        },
+      },
+    },
+  });
+
+  return latestWinner?.winner ?? null;
+}
+
+async function serializeTournament(tournament: Awaited<ReturnType<typeof prisma.tournament.findMany>>[number]) {
+  if (tournament.status !== "COMPLETED") {
+    return { ...tournament, winner: null };
+  }
+
+  const winner = await getTournamentWinner(tournament.id, tournament.format);
+  return { ...tournament, winner };
+}
+
 export async function GET() {
   try {
     const tournaments = await prisma.tournament.findMany({
@@ -50,7 +123,11 @@ export async function GET() {
       include: tournamentInclude,
     });
 
-    return NextResponse.json(tournaments);
+    const serialized = await Promise.all(
+      tournaments.map((tournament) => serializeTournament(tournament)),
+    );
+
+    return NextResponse.json(serialized);
   } catch (error) {
     console.error("Failed to load tournaments:", error);
 
@@ -142,7 +219,7 @@ export async function POST(request: Request) {
       include: tournamentInclude,
     });
 
-    return NextResponse.json(tournament, {
+    return NextResponse.json({ ...tournament, winner: null }, {
       status: 201,
     });
   } catch (error) {
@@ -249,3 +326,5 @@ export async function DELETE(request: Request) {
     );
   }
 }
+
+// UI patch trigger 2.
