@@ -93,34 +93,34 @@ export default function PlayerProfilePage({ params }: { params: Promise<{ id: st
     }
   }
 
-  if (loading) return <main className="min-h-screen p-6">Loading player profile…</main>;
-  if (!profile) return <main className="min-h-screen p-6"><p>{message || "Player not found."}</p><Link className="underline" href="/">Back</Link></main>;
+  if (loading) return <main className="min-h-screen bg-slate-950 p-6 text-slate-100">Loading player profile…</main>;
+  if (!profile) return <main className="min-h-screen bg-slate-950 p-6 text-slate-100"><p>{message || "Player not found."}</p><Link className="underline" href="/">Back</Link></main>;
 
   const { player, stats } = profile;
   const strikeRate = stats.battingBalls ? ((stats.runs / stats.battingBalls) * 100).toFixed(1) : "0.0";
 
   return (
-    <main className="min-h-screen bg-slate-50 p-4 sm:p-6">
+    <main className="min-h-screen bg-slate-950 p-4 text-slate-100 sm:p-6">
       <div className="mx-auto max-w-5xl space-y-5">
         <div className="flex items-center justify-between gap-3">
-          <Link href="/" className="rounded-lg border bg-white px-3 py-2 text-sm">← Back</Link>
+          <Link href="/" className="rounded-lg border border-slate-700 bg-slate-900 px-3 py-2 text-sm">← Back</Link>
           <h1 className="text-xl font-bold">Player Profile</h1>
           <button onClick={() => setShowDelete(true)} className="rounded-lg border border-red-300 px-3 py-2 text-sm text-red-700">Delete</button>
         </div>
 
-        {message && <div className="rounded-lg border bg-white p-3 text-sm">{message}</div>}
+        {message && <div className="rounded-lg border border-slate-700 bg-slate-900 p-3 text-sm">{message}</div>}
 
-        <section className="rounded-2xl border bg-white p-5 shadow-sm">
+        <section className="rounded-2xl border border-slate-800 bg-slate-900 p-5 shadow-sm">
           <div className="flex flex-col gap-5 sm:flex-row sm:items-center">
-            <div className="relative h-28 w-28 shrink-0 overflow-hidden rounded-full border bg-slate-100">
+            <div className="relative h-28 w-28 shrink-0 overflow-hidden rounded-full border bg-slate-800">
               {player.photo ? <img src={player.photo} alt={player.name} className="h-full w-full object-cover" /> : <div className="flex h-full items-center justify-center text-4xl font-bold text-slate-400">{player.name.charAt(0).toUpperCase()}</div>}
             </div>
             <div className="min-w-0 flex-1">
               <h2 className="text-3xl font-bold">{player.name}</h2>
-              <p className="mt-1 text-sm text-slate-500">{player.jerseyNumber != null ? `Jersey #${player.jerseyNumber}` : "No jersey number"}</p>
+              <p className="mt-1 text-sm text-slate-400">{player.jerseyNumber != null ? `Jersey #${player.jerseyNumber}` : "No jersey number"}</p>
               <div className="mt-3 flex flex-wrap gap-2 text-sm">
-                {player.battingStyle && <span className="rounded-full bg-slate-100 px-3 py-1">Batting: {player.battingStyle}</span>}
-                {player.bowlingStyle && <span className="rounded-full bg-slate-100 px-3 py-1">Bowling: {player.bowlingStyle}</span>}
+                {player.battingStyle && <span className="rounded-full bg-slate-800 px-3 py-1">Batting: {player.battingStyle}</span>}
+                {player.bowlingStyle && <span className="rounded-full bg-slate-800 px-3 py-1">Bowling: {player.bowlingStyle}</span>}
               </div>
             </div>
             <label className="cursor-pointer rounded-lg bg-slate-900 px-4 py-2 text-center text-sm font-medium text-white">
@@ -132,27 +132,27 @@ export default function PlayerProfilePage({ params }: { params: Promise<{ id: st
 
         <section className="grid grid-cols-2 gap-3 sm:grid-cols-5">
           {[["Matches", stats.matches], ["Runs", stats.runs], ["Balls", stats.battingBalls], ["Strike Rate", strikeRate], ["Wickets", stats.wickets]].map(([label, value]) => (
-            <div key={String(label)} className="rounded-xl border bg-white p-4 text-center shadow-sm"><div className="text-2xl font-bold">{value}</div><div className="text-xs text-slate-500">{label}</div></div>
+            <div key={String(label)} className="rounded-xl border border-slate-800 bg-slate-900 p-4 text-center shadow-sm"><div className="text-2xl font-bold">{value}</div><div className="text-xs text-slate-400">{label}</div></div>
           ))}
         </section>
 
         <div className="grid gap-5 md:grid-cols-2">
-          <section className="rounded-2xl border bg-white p-5 shadow-sm">
+          <section className="rounded-2xl border border-slate-800 bg-slate-900 p-5 shadow-sm">
             <h3 className="font-semibold">Teams</h3>
-            <div className="mt-3 space-y-2">{profile.teams.length ? profile.teams.map((team) => <Link key={team.id} href={`/profile/team/${team.id}`} className="flex items-center justify-between rounded-lg border p-3 hover:bg-slate-50"><span>{team.name}</span><span className="text-xs text-slate-400">Open →</span></Link>) : <p className="text-sm text-slate-500">No teams recorded.</p>}</div>
+            <div className="mt-3 space-y-2">{profile.teams.length ? profile.teams.map((team) => <Link key={team.id} href={`/profile/team/${team.id}`} className="flex items-center justify-between rounded-lg border border-slate-700 bg-slate-950/60 p-3 text-slate-200 hover:bg-slate-800"><span>{team.name}</span><span className="text-xs text-slate-400">Open →</span></Link>) : <p className="text-sm text-slate-400">No teams recorded.</p>}</div>
           </section>
-          <section className="rounded-2xl border bg-white p-5 shadow-sm">
+          <section className="rounded-2xl border border-slate-800 bg-slate-900 p-5 shadow-sm">
             <h3 className="font-semibold">Tournaments</h3>
-            <div className="mt-3 space-y-2">{profile.tournaments.length ? profile.tournaments.map((tournament) => <div key={`${tournament.id}-${tournament.teamId}`} className="rounded-lg border p-3"><div className="font-medium">{tournament.name}</div><div className="text-xs text-slate-500">{tournament.season || ""} · {tournament.teamName}</div></div>) : <p className="text-sm text-slate-500">No tournaments recorded.</p>}</div>
+            <div className="mt-3 space-y-2">{profile.tournaments.length ? profile.tournaments.map((tournament) => <div key={`${tournament.id}-${tournament.teamId}`} className="rounded-lg border border-slate-700 bg-slate-950/60 p-3"><div className="font-medium">{tournament.name}</div><div className="text-xs text-slate-400">{tournament.season || ""} · {tournament.teamName}</div></div>) : <p className="text-sm text-slate-400">No tournaments recorded.</p>}</div>
           </section>
         </div>
 
-        <section className="rounded-2xl border bg-white p-5 shadow-sm">
+        <section className="rounded-2xl border border-slate-800 bg-slate-900 p-5 shadow-sm">
           <h3 className="font-semibold">Recent matches</h3>
-          <div className="mt-3 divide-y">{profile.recentMatches.length ? profile.recentMatches.map((match) => <div key={match.id} className="flex flex-col gap-1 py-3 sm:flex-row sm:items-center sm:justify-between"><div><div className="font-medium">{match.teamA} vs {match.teamB}</div><div className="text-xs text-slate-500">{match.tournamentName || "Standalone match"} · {match.teamName} · {match.role}</div></div><span className="text-xs text-slate-500">{match.status}</span></div>) : <p className="py-3 text-sm text-slate-500">No matches recorded.</p>}</div>
+          <div className="mt-3 divide-y">{profile.recentMatches.length ? profile.recentMatches.map((match) => <div key={match.id} className="flex flex-col gap-1 py-3 sm:flex-row sm:items-center sm:justify-between"><div><div className="font-medium">{match.teamA} vs {match.teamB}</div><div className="text-xs text-slate-400">{match.tournamentName || "Standalone match"} · {match.teamName} · {match.role}</div></div><span className="text-xs text-slate-400">{match.status}</span></div>) : <p className="py-3 text-sm text-slate-400">No matches recorded.</p>}</div>
         </section>
 
-        {showDelete && <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4"><div className="w-full max-w-md rounded-2xl bg-white p-5 shadow-xl"><h3 className="text-lg font-bold">Archive {player.name}?</h3><p className="mt-2 text-sm text-slate-600">This uses the existing Maintenance PIN. The player will be removed from active rosters while all historical scoring data and this profile remain intact.</p><input autoFocus inputMode="numeric" value={pin} onChange={(event) => setPin(event.target.value)} placeholder="Maintenance PIN" className="mt-4 w-full rounded-lg border px-3 py-2" /><div className="mt-4 flex justify-end gap-2"><button onClick={() => setShowDelete(false)} className="rounded-lg border px-4 py-2">Cancel</button><button disabled={!pin || deleting} onClick={() => void deletePlayer()} className="rounded-lg bg-red-600 px-4 py-2 text-white disabled:opacity-50">{deleting ? "Archiving…" : "Confirm Archive"}</button></div></div></div>}
+        {showDelete && <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4"><div className="w-full max-w-md rounded-2xl border border-slate-700 bg-slate-900 p-5 shadow-xl"><h3 className="text-lg font-bold">Archive {player.name}?</h3><p className="mt-2 text-sm text-slate-300">This uses the existing Maintenance PIN. The player will be removed from active rosters while all historical scoring data and this profile remain intact.</p><input autoFocus inputMode="numeric" value={pin} onChange={(event) => setPin(event.target.value)} placeholder="Maintenance PIN" className="mt-4 w-full rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-white" /><div className="mt-4 flex justify-end gap-2"><button onClick={() => setShowDelete(false)} className="rounded-lg border px-4 py-2">Cancel</button><button disabled={!pin || deleting} onClick={() => void deletePlayer()} className="rounded-lg bg-red-600 px-4 py-2 text-white disabled:opacity-50">{deleting ? "Archiving…" : "Confirm Archive"}</button></div></div></div>}
       </div>
     </main>
   );

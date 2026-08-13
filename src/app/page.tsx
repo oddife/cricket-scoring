@@ -3585,10 +3585,9 @@ const [resumingMatchId, setResumingMatchId] =
   function verifyMaintenancePin() {
     const SECRET_PIN = "2580";
     if (maintenancePin === SECRET_PIN) {
-      setMaintenanceMode("MENU");
-      setMaintenancePin("");
-      setMaintenanceError("");
-      return;
+       setMaintenanceMode("MENU");
+       setMaintenanceError("");
+       return;
     }
     setMaintenanceError("Incorrect PIN.");
     setMaintenancePin("");
@@ -4359,6 +4358,7 @@ late-800 disabled:opacity-50 [color-scheme:dark]"
                       <TournamentLogoEditor
                         tournamentId={tournament.id}
                         currentLogo={tournament.logo}
+                        maintenancePin={maintenancePin}
                       />
                       <button
                         type="button"
