@@ -75,17 +75,29 @@ export async function GET(_request: Request, { params }: RouteContext) {
     if (!match) return NextResponse.json({ error: "Match not found." }, { status: 404 });
 
     const summaries = match.innings.map((innings) => ({ inningsNumber: innings.inningsNumber, battingTeamId: innings.battingTeamId, totalRuns: innings.totalRuns }));
-    const innings = match.innings.map((current) => ({
-      ...current,
-      leadDeficit: calculateFourInningsPosition({
-        inningsNumber: current.inningsNumber,
-        inningsPerMatch: match.inningsPerMatch as 2 | 4,
-        battingTeamId: current.battingTeamId,
-        bowlingTeamId: current.bowlingTeamId,
-        currentInningsRuns: current.totalRuns,
-        previousInnings: summaries.filter((item) => item.inningsNumber < current.inningsNumber),
-      }),
-    }));
+    const innings = match.innings.map((current) => {
+      const currentBowlerId = current.deliveries.length ? current.deliveries[current.deliveries.length - 1].bowlerId : current.currentBowlerAId;
+      const bowlerDeliveries = currentBowlerId ? current.deliveries.filter((delivery) => delivery.bowlerId === currentBowlerId) : [];
+      const bowlerLegalBalls = bowlerDeliveries.filter((delivery) => delivery.isLegal).length;
+      const bowlerRuns = bowlerDeliveries.reduce((sum, delivery) => sum + delivery.runsTotal, 0);
+      const runRate = current.legalBalls > 0 ? Number((current.totalRuns / (current.legalBalls / 6)).toFixed(2)) : null;
+      const economy = bowlerLegalBalls > 0 ? Number((bowlerRuns / (bowlerLegalBalls / 6)).toFixed(2)) : null;
+
+      return {
+        ...current,
+        runRate,
+        economy,
+        currentBowlerId,
+        leadDeficit: calculateFourInningsPosition({
+          inningsNumber: current.inningsNumber,
+          inningsPerMatch: match.inningsPerMatch as 2 | 4,
+          battingTeamId: current.battingTeamId,
+          bowlingTeamId: current.bowlingTeamId,
+          currentInningsRuns: current.totalRuns,
+          previousInnings: summaries.filter((item) => item.inningsNumber < current.inningsNumber),
+        }),
+      };
+    });
 
     return NextResponse.json({ ...match, innings });
   } catch (error) {
