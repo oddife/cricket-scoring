@@ -2179,7 +2179,7 @@ const [resumingMatchId, setResumingMatchId] =
       ];
 
       const refreshedOverIsOddFinalOver =
-        bowlingMode === "DOUBLE" &&
+        innings.match?.bowlingMode === "DOUBLE" &&
         Boolean(innings.match?.oddOvers) &&
         refreshedOverNumber >= Number(innings.match?.oversPerInnings ?? 0);
 
@@ -2196,15 +2196,30 @@ const [resumingMatchId, setResumingMatchId] =
       setLiveBowlerAId(refreshedBowlerAId);
       setLiveBowlerBId(refreshedBowlerBId);
 
-      const refreshedCurrentBowlerId =
-        refreshedOverIsOddFinalOver
-          ? refreshedBowlerAId
-          : bowlingMode === "DOUBLE" &&
-              refreshedOverDeliveries.length > 0
-            ? refreshedOverDeliveries.length % 2 === 0
-              ? refreshedBowlerAId
-              : refreshedBowlerBId
-            : refreshedBowlerAId;
+      const lastRefreshedBowlerId =
+        refreshedOverDeliveries.length > 0
+          ? refreshedOverDeliveries[
+              refreshedOverDeliveries.length - 1
+            ].bowlerId
+          : "";
+
+let refreshedCurrentBowlerId = refreshedBowlerAId;
+
+if (refreshedOverIsOddFinalOver) {
+  refreshedCurrentBowlerId = refreshedBowlerAId;
+} else if (
+  bowlingMode === "DOUBLE" &&
+  refreshedBowlerAId &&
+  refreshedBowlerBId
+) {
+  if (lastRefreshedBowlerId === refreshedBowlerAId) {
+    refreshedCurrentBowlerId = refreshedBowlerBId;
+  } else if (
+    lastRefreshedBowlerId === refreshedBowlerBId
+  ) {
+    refreshedCurrentBowlerId = refreshedBowlerAId;
+  }
+}
 
       setLiveBowlerId(refreshedCurrentBowlerId);
       setLivePreviousBowlerAId(innings.previousOverBowlerAId ?? "");
