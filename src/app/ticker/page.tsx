@@ -20,6 +20,8 @@ const STYLE_OPTIONS: { id: TickerStyle; name: string; description: string }[] = 
   { id: "wide", name: "Wide", description: "Larger broadcast graphic" },
 ];
 const EMPTY: TickerData = { style: "compact", teamAId: "", teamBId: "", teamAName: "", teamBName: "", score: "0-0", overs: "0.0", target: "", batsman1: { name: "", runs: "0", balls: "0" }, batsman2: { name: "", runs: "0", balls: "0" }, bowler: { name: "", figures: "0-0" }, lastSix: ["0", "0", "0", "0", "0", "0"], toss: "", venue: "", status: "LIVE", display: DISPLAY_DEFAULTS, font: "Arial", fontSize: "100", outputWidth: 1280, outputHeight: 100, bottomHeight: 30 };
+const MATCH_STORAGE_KEY = "new-castle-cricket-ticker-match";
+const LIVE_REFRESH_MS = 2000;
 
 function deliveryLabel(delivery: MatchDetail["innings"][number]["deliveries"][number]) {
   if (delivery.wicket) return "W";
@@ -50,12 +52,18 @@ function snapshotFromMatch(match: MatchDetail): Partial<TickerData> {
   const bowlerWickets = bowlerDeliveries.filter((delivery) => delivery.wicket?.bowlerId === currentBowlerId).length;
   const lastSix = deliveries.slice(-6).map(deliveryLabel);
   return {
-    teamAId: match.teamA.id, teamBId: match.teamB.id, teamAName: "", teamBName: "",
-    score: `${innings.totalRuns}-${innings.wickets}`, overs: `${Math.floor(innings.legalBalls / 6)}.${innings.legalBalls % 6}`,
-    target: innings.target == null ? "" : String(innings.target), batsman1: battingStats(strikerId), batsman2: battingStats(nonStrikerId),
+    teamAId: match.teamA.id,
+    teamBId: match.teamB.id,
+    score: `${innings.totalRuns}-${innings.wickets}`,
+    overs: `${Math.floor(innings.legalBalls / 6)}.${innings.legalBalls % 6}`,
+    target: innings.target == null ? "" : String(innings.target),
+    batsman1: battingStats(strikerId),
+    batsman2: battingStats(nonStrikerId),
     bowler: { name: playerName(match.players, currentBowlerId), figures: `${bowlerOvers}-${bowlerRuns}-${bowlerWickets}` },
-    lastSix: lastSix.length ? lastSix : EMPTY.lastSix, venue: match.venue ?? "",
-    toss: match.tossWinner?.name ? `TOSS ${match.tossWinner.name}${match.tossDecision ? ` ${match.tossDecision}` : ""}` : "", status: "LIVE",
+    lastSix: lastSix.length ? lastSix : EMPTY.lastSix,
+    venue: match.venue ?? "",
+    toss: match.tossWinner?.name ? `TOSS ${match.tossWinner.name}${match.tossDecision ? ` ${match.tossDecision}` : ""}` : "",
+    status: match.status || "LIVE",
   };
 }
 
@@ -72,18 +80,58 @@ export default function BroadcastTickerPage() {
   const previewRef = useRef<HTMLDivElement>(null);
   const [previewScale, setPreviewScale] = useState(1);
 
+  async function loadMatchSnapshot(matchId: string, showMessage: boolean) {
+    try {
+      const response = await fetch(`/api/matches/${matchId}`, { cache: "no-store" });
+      const match: MatchDetail = await response.json();
+      if (!response.ok) throw new Error((match as unknown as { error?: string }).error || "Failed to load match.");
+      setTicker((current) => ({ ...current, ...snapshotFromMatch(match) }));
+      setTeams((current) => {
+        const byId = new Map(current.map((team) => [team.id, team]));
+        for (const team of [match.teamA, match.teamB]) {
+          const existing = byId.get(team.id);
+          byId.set(team.id, { ...team, players: existing?.players ?? match.players.filter((entry) => entry.teamId === team.id).map((entry) => ({ player: entry.player })) });
+        }
+        return [...byId.values()];
+      });
+      if (showMessage) setMessage("Live match data loaded. It will refresh automatically every 2 seconds. Save to keep the current ticker configuration.");
+    } catch (error) {
+      if (showMessage) setMessage(error instanceof Error ? error.message : "Failed to load match.");
+    }
+  }
+
   useEffect(() => {
+    let cancelled = false;
     Promise.all([
       fetch("/api/teams", { cache: "no-store" }).then((response) => response.json()),
       fetch("/api/broadcast-ticker", { cache: "no-store" }).then((response) => response.json()),
       fetch("/api/matches?status=LIVE", { cache: "no-store" }).then((response) => response.json()),
     ]).then(([teamData, tickerData, matchData]: [Team[], SavedResponse, LiveMatch[]]) => {
+      if (cancelled) return;
       setTeams(Array.isArray(teamData) ? teamData : []);
-      if (tickerData?.ticker) setTicker({ ...EMPTY, ...tickerData.ticker, display: { ...DISPLAY_DEFAULTS, ...(tickerData.ticker.display ?? {}) } });
+      const savedTicker = tickerData?.ticker ? { ...EMPTY, ...tickerData.ticker, display: { ...DISPLAY_DEFAULTS, ...(tickerData.ticker.display ?? {}) } } : EMPTY;
+      setTicker(savedTicker);
       setSavedTeams(tickerData?.teams ?? []);
-      setLiveMatches(Array.isArray(matchData) ? matchData : []);
-    }).finally(() => setLoading(false));
+      const matches = Array.isArray(matchData) ? matchData : [];
+      setLiveMatches(matches);
+      const storedId = typeof window !== "undefined" ? window.localStorage.getItem(MATCH_STORAGE_KEY) || "" : "";
+      const storedMatch = matches.find((match) => match.id === storedId);
+      const inferredMatch = matches.find((match) => match.teamA.id === savedTicker.teamAId && match.teamB.id === savedTicker.teamBId);
+      const initialMatch = storedMatch || inferredMatch;
+      if (initialMatch) {
+        setSelectedMatchId(initialMatch.id);
+        if (typeof window !== "undefined") window.localStorage.setItem(MATCH_STORAGE_KEY, initialMatch.id);
+        void loadMatchSnapshot(initialMatch.id, false);
+      }
+    }).catch(() => setMessage("Failed to load ticker data.")).finally(() => { if (!cancelled) setLoading(false); });
+    return () => { cancelled = true; };
   }, []);
+
+  useEffect(() => {
+    if (!selectedMatchId) return;
+    const timer = window.setInterval(() => { void loadMatchSnapshot(selectedMatchId, false); }, LIVE_REFRESH_MS);
+    return () => window.clearInterval(timer);
+  }, [selectedMatchId]);
 
   useEffect(() => {
     const updatePreviewScale = () => {
@@ -116,25 +164,13 @@ export default function BroadcastTickerPage() {
 
   async function loadMatch(matchId: string) {
     setSelectedMatchId(matchId);
+    if (typeof window !== "undefined") {
+      if (matchId) window.localStorage.setItem(MATCH_STORAGE_KEY, matchId);
+      else window.localStorage.removeItem(MATCH_STORAGE_KEY);
+    }
     if (!matchId) return;
     setLoadingMatch(true); setMessage("");
-    try {
-      const response = await fetch(`/api/matches/${matchId}`, { cache: "no-store" });
-      const match: MatchDetail = await response.json();
-      if (!response.ok) throw new Error((match as unknown as { error?: string }).error || "Failed to load match.");
-      setTicker((current) => ({ ...current, ...snapshotFromMatch(match) }));
-      setTeams((current) => {
-        const byId = new Map(current.map((team) => [team.id, team]));
-        for (const team of [match.teamA, match.teamB]) {
-          const existing = byId.get(team.id);
-          byId.set(team.id, { ...team, players: existing?.players ?? match.players.filter((entry) => entry.teamId === team.id).map((entry) => ({ player: entry.player })) });
-        }
-        return [...byId.values()];
-      });
-      setMessage("Live match data loaded. Save to keep this as the ticker snapshot.");
-    } catch (error) {
-      setMessage(error instanceof Error ? error.message : "Failed to load match.");
-    } finally { setLoadingMatch(false); }
+    try { await loadMatchSnapshot(matchId, true); } finally { setLoadingMatch(false); }
   }
 
   async function save() {
@@ -143,7 +179,7 @@ export default function BroadcastTickerPage() {
       const response = await fetch("/api/broadcast-ticker", { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify(ticker) });
       const data = await response.json();
       if (!response.ok) throw new Error(data.error || "Failed to save ticker.");
-      setTicker((current) => ({ ...current, ...data.ticker })); setSavedTeams(previewTeams); setMessage("Ticker saved as a static snapshot.");
+      setTicker((current) => ({ ...current, ...data.ticker })); setSavedTeams(previewTeams); setMessage("Ticker saved.");
     } catch (error) {
       setMessage(error instanceof Error ? error.message : "Failed to save ticker.");
     } finally { setSaving(false); }
@@ -163,7 +199,7 @@ export default function BroadcastTickerPage() {
         <div className={styles.section}><h2>Ticker size</h2><div className={styles.grid2}><label className={styles.fieldLabel}>Width (px)<input className={styles.fieldControl} type="number" min="640" max="7680" value={ticker.outputWidth ?? 1280} onChange={(event) => update("outputWidth", Number(event.target.value))} /></label><label className={styles.fieldLabel}>Height (px)<input className={styles.fieldControl} type="number" min="60" max="2160" value={ticker.outputHeight ?? 100} onChange={(event) => update("outputHeight", Number(event.target.value))} /></label></div><div className={styles.grid2}><label className={styles.fieldLabel}>Bottom row height (px)<input className={styles.fieldControl} type="number" min="20" max={Math.max(20, Number(ticker.outputHeight ?? 100) - 20)} value={ticker.bottomHeight ?? 30} onChange={(event) => update("bottomHeight", Number(event.target.value))} /></label></div><p className={styles.hint}>Width and height define the exact output. Bottom row height is independent, so you can make the information row thinner without changing the main ticker height.</p></div>
         <div className={styles.section}><h2>Team display names</h2><div className={styles.grid2}><label className={styles.fieldLabel}>Team A display name<input className={styles.fieldControl} value={ticker.teamAName ?? ""} onChange={(event) => update("teamAName", event.target.value)} placeholder={teamA?.shortName || teamA?.name || "Auto short name"} maxLength={24} /></label><label className={styles.fieldLabel}>Team B display name<input className={styles.fieldControl} value={ticker.teamBName ?? ""} onChange={(event) => update("teamBName", event.target.value)} placeholder={teamB?.shortName || teamB?.name || "Auto short name"} maxLength={24} /></label></div><p className={styles.hint}>Leave blank for the automatic short name, or enter a custom broadcast name.</p></div>
         <div className={styles.section}><h2>What to display</h2><div className={styles.checkGrid}>{(Object.keys(DISPLAY_DEFAULTS) as (keyof DisplayOptions)[]).map((key) => <label className={styles.checkItem} key={key}><input className={styles.checkbox} type="checkbox" checked={ticker.display?.[key] ?? true} onChange={() => toggleDisplay(key)} /><span>{key === "lastSix" ? "Last 6 balls" : key === "teamNames" ? "Team names" : key[0].toUpperCase() + key.slice(1)}</span></label>)}</div></div>
-        <div className={styles.section}><h2>Automatic match data</h2><div className={styles.autoGrid}><div><span>Score</span><strong>{ticker.score}</strong></div><div><span>Overs</span><strong>{ticker.overs}</strong></div><div><span>Target</span><strong>{ticker.target || "—"}</strong></div><div><span>Batsman 1</span><strong>{ticker.batsman1.name || "—"}</strong><small>{ticker.batsman1.runs} ({ticker.batsman1.balls})</small></div><div><span>Batsman 2</span><strong>{ticker.batsman2.name || "—"}</strong><small>{ticker.batsman2.runs} ({ticker.batsman2.balls})</small></div><div><span>Bowler</span><strong>{ticker.bowler.name || "—"}</strong><small>{ticker.bowler.figures}</small></div></div><div className={styles.ballInputs}>{ticker.lastSix.map((ball, index) => <span className={styles.autoBall} key={index}>{ball}</span>)}</div><p className={styles.hint}>Loaded automatically from the selected match. Save creates a static snapshot.</p></div>
+        <div className={styles.section}><h2>Automatic match data</h2><div className={styles.autoGrid}><div><span>Score</span><strong>{ticker.score}</strong></div><div><span>Overs</span><strong>{ticker.overs}</strong></div><div><span>Target</span><strong>{ticker.target || "—"}</strong></div><div><span>Batsman 1</span><strong>{ticker.batsman1.name || "—"}</strong><small>{ticker.batsman1.runs} ({ticker.batsman1.balls})</small></div><div><span>Batsman 2</span><strong>{ticker.batsman2.name || "—"}</strong><small>{ticker.batsman2.runs} ({ticker.batsman2.balls})</small></div><div><span>Bowler</span><strong>{ticker.bowler.name || "—"}</strong><small>{ticker.bowler.figures}</small></div></div><div className={styles.ballInputs}>{ticker.lastSix.map((ball, index) => <span className={styles.autoBall} key={index}>{ball}</span>)}</div><p className={styles.hint}>Live data refreshes automatically every 2 seconds while a match is selected.</p></div>
         <div className={styles.section}><h2>Broadcast text</h2><div className={styles.grid2}><label className={styles.fieldLabel}>Toss / label<input className={styles.fieldControl} value={ticker.toss} onChange={(event) => update("toss", event.target.value)} placeholder="TOSS" /></label><label className={styles.fieldLabel}>Venue / location<input className={styles.fieldControl} value={ticker.venue} onChange={(event) => update("venue", event.target.value)} placeholder="VENUE" /></label></div></div>
         {message && <div className={styles.message}>{message}</div>}
       </section>
