@@ -4651,20 +4651,71 @@ late-800 disabled:opacity-50 [color-scheme:dark]"
                     )}
                   </div>
 
-                  <button
-                    type="button"
-                    onClick={() =>
-                      void resumeMatch(match.id)
-                    }
-                    disabled={
-                      resumingMatchId === match.id
-                    }
-                    className="h-11 rounded-xl bg-emerald-500 px-6 font-bold text-slate-950 hover:bg-emerald-400 disabled:opacity-50"
-                  >
-                    {resumingMatchId === match.id
-                      ? "Opening..."
-                      : "Resume Match"}
-                  </button>
+<div className="flex flex-wrap items-center gap-2">
+  <button
+    type="button"
+    onClick={() => {
+      window.open(
+        `/score/${match.id}`,
+        "_blank",
+        "noopener,noreferrer",
+      );
+    }}
+    className="h-11 rounded-xl border border-slate-600 bg-slate-900 px-4 font-semibold text-slate-200 transition hover:border-slate-500 hover:bg-slate-800"
+  >
+    Open Live Score
+  </button>
+
+  <button
+    type="button"
+    onClick={async () => {
+      const url = `${window.location.origin}/score/${match.id}`;
+
+      try {
+        if (navigator.share) {
+          await navigator.share({
+            title: `${match.teamA.name} vs ${match.teamB.name}`,
+            text: "Live Score",
+            url,
+          });
+          return;
+        }
+
+        await navigator.clipboard.writeText(url);
+        setError("Live score link copied.");
+      } catch (error) {
+        if (
+          error instanceof DOMException &&
+          error.name === "AbortError"
+        ) {
+          return;
+        }
+
+        console.error(
+          "Share live score error:",
+          error,
+        );
+        setError(
+          "Unable to share the live score link.",
+        );
+      }
+    }}
+    className="h-11 rounded-xl border border-slate-600 bg-slate-900 px-4 font-semibold text-slate-200 transition hover:border-slate-500 hover:bg-slate-800"
+  >
+    Share
+  </button>
+
+  <button
+    type="button"
+    onClick={() => void resumeMatch(match.id)}
+    disabled={resumingMatchId === match.id}
+    className="h-11 rounded-xl bg-emerald-500 px-5 font-bold text-slate-950 hover:bg-emerald-400 disabled:opacity-50"
+  >
+    {resumingMatchId === match.id
+      ? "Opening..."
+      : "Resume Match"}
+  </button>
+</div>
                 </div>
               );
             })}
