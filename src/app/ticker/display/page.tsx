@@ -50,9 +50,9 @@ export default function BroadcastTickerDisplayPage() {
         <select
           value={refreshSeconds}
           onChange={(event) => setRefreshSeconds(Number(event.target.value))}
-          style={{ background: "#1b1b1b", color: "#fff", border: "1px solid rgba(255,255,255,.25)", borderRadius: 3, font: "12px Arial, sans-serif", padding: "1px 3px", colorScheme: "dark" }}
+          style={{ background: "transparent", color: "#fff", border: "1px solid rgba(255,255,255,.25)", borderRadius: 3, font: "12px Arial, sans-serif", padding: "1px 3px", colorScheme: "dark", outline: "none" }}
         >
-          {REFRESH_OPTIONS.map((seconds) => <option key={seconds} value={seconds} style={{ background: "#1b1b1b", color: "#fff" }}>{seconds}s</option>)}
+          {REFRESH_OPTIONS.map((seconds) => <option key={seconds} value={seconds} style={{ background: "rgba(0,0,0,.9)", color: "#fff" }}>{seconds}s</option>)}
         </select>
       </label>
     </main>
