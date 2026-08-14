@@ -2197,21 +2197,27 @@ const [resumingMatchId, setResumingMatchId] =
       setLiveBowlerBId(refreshedBowlerBId);
 
       const lastRefreshedBowlerId =
-        refreshedOverDeliveries.length > 0
-          ? refreshedOverDeliveries[
-              refreshedOverDeliveries.length - 1
-            ].bowlerId
-          : "";
+  refreshedOverDeliveries.length > 0
+    ? refreshedOverDeliveries[
+        refreshedOverDeliveries.length - 1
+      ].bowlerId
+    : "";
+
+const hasDoubleBowlerPair =
+  Boolean(refreshedBowlerAId) &&
+  Boolean(refreshedBowlerBId);
 
 let refreshedCurrentBowlerId = refreshedBowlerAId;
 
 if (refreshedOverIsOddFinalOver) {
+  // Odd final over uses one bowler for the whole over.
   refreshedCurrentBowlerId = refreshedBowlerAId;
 } else if (
-  bowlingMode === "DOUBLE" &&
-  refreshedBowlerAId &&
-  refreshedBowlerBId
+  hasDoubleBowlerPair &&
+  lastRefreshedBowlerId
 ) {
+  // Double Bowler: always select the OTHER bowler
+  // from the one who bowled the last delivery.
   if (lastRefreshedBowlerId === refreshedBowlerAId) {
     refreshedCurrentBowlerId = refreshedBowlerBId;
   } else if (
@@ -2221,7 +2227,7 @@ if (refreshedOverIsOddFinalOver) {
   }
 }
 
-      setLiveBowlerId(refreshedCurrentBowlerId);
+setLiveBowlerId(refreshedCurrentBowlerId);
       setLivePreviousBowlerAId(innings.previousOverBowlerAId ?? "");
       setLivePreviousBowlerBId(innings.previousOverBowlerBId ?? "");
       setLiveOddOvers(Boolean(innings.match?.oddOvers));
