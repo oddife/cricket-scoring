@@ -47,8 +47,12 @@ export default function BroadcastTickerDisplayPage() {
       <BroadcastTicker ticker={data.ticker} teams={data.teams} displayOnly />
       <label style={{ position: "fixed", top: 8, right: 8, zIndex: 1000, display: "flex", alignItems: "center", gap: 5, padding: "4px 7px", borderRadius: 5, background: "rgba(0,0,0,.65)", color: "#fff", font: "12px Arial, sans-serif", opacity: .85 }}>
         Refresh
-        <select value={refreshSeconds} onChange={(event) => setRefreshSeconds(Number(event.target.value))} style={{ font: "12px Arial, sans-serif", padding: "1px 3px" }}>
-          {REFRESH_OPTIONS.map((seconds) => <option key={seconds} value={seconds}>{seconds}s</option>)}
+        <select
+          value={refreshSeconds}
+          onChange={(event) => setRefreshSeconds(Number(event.target.value))}
+          style={{ background: "#1b1b1b", color: "#fff", border: "1px solid rgba(255,255,255,.25)", borderRadius: 3, font: "12px Arial, sans-serif", padding: "1px 3px", colorScheme: "dark" }}
+        >
+          {REFRESH_OPTIONS.map((seconds) => <option key={seconds} value={seconds} style={{ background: "#1b1b1b", color: "#fff" }}>{seconds}s</option>)}
         </select>
       </label>
     </main>
