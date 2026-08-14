@@ -4,7 +4,7 @@ import { useEffect, useState } from "react";
 import styles from "@/app/ticker/ticker.module.css";
 
 export type TickerDisplay = { score: boolean; overs: boolean; target: boolean; batsmen: boolean; bowler: boolean; lastSix: boolean; toss: boolean; venue: boolean; teamNames: boolean };
-export type TickerData = { style: "compact" | "wide"; teamAId: string; teamBId: string; score: string; overs: string; target: string; batsman1: { name: string; runs: string; balls: string }; batsman2: { name: string; runs: string; balls: string }; bowler: { name: string; figures: string }; lastSix: string[]; toss: string; venue: string; status: string; display?: TickerDisplay; font?: string; fontSize?: string };
+export type TickerData = { style: "compact" | "wide"; teamAId: string; teamBId: string; teamAName?: string; teamBName?: string; score: string; overs: string; target: string; batsman1: { name: string; runs: string; balls: string }; batsman2: { name: string; runs: string; balls: string }; bowler: { name: string; figures: string }; lastSix: string[]; toss: string; venue: string; status: string; display?: TickerDisplay; font?: string; fontSize?: string };
 export type TickerTeam = { id: string; name: string; shortName: string | null; logo: string | null };
 type Props = { ticker: TickerData; teams: TickerTeam[]; displayOnly?: boolean };
 const DEFAULT_DISPLAY: TickerDisplay = { score: true, overs: true, target: true, batsmen: true, bowler: true, lastSix: true, toss: true, venue: true, teamNames: true };
@@ -18,15 +18,20 @@ export default function BroadcastTicker({ ticker, teams, displayOnly = false }: 
   const display = { ...DEFAULT_DISPLAY, ...(ticker.display ?? {}) };
   const stripClass = ticker.style === "wide" ? styles["broadcast-strip-wide"] : "";
   const scale = Math.max(0.8, Math.min(1.3, Number(ticker.fontSize ?? "100") / 100));
+  const teamAName = ticker.teamAName?.trim() || teamA?.shortName || teamA?.name || "TEAM A";
+  const teamBName = ticker.teamBName?.trim() || teamB?.shortName || teamB?.name || "TEAM B";
+
   return <div className={`${styles["broadcast-stage"]} ${displayOnly ? styles["broadcast-display"] : ""}`} style={{ fontFamily: ticker.font || "Arial, Helvetica, sans-serif", fontSize: `${scale}em` }}><div className={`${styles["broadcast-strip"]} ${stripClass}`}>
-    <div className={styles["broadcast-team-block"]}><TeamMark team={teamA} fallback="A" />{display.teamNames && <div className={styles["broadcast-team-copy"]}><strong>{teamA?.shortName || "TEAM A"}</strong><span>{ticker.status || "LIVE"}</span></div>}</div>
+    <div className={styles["broadcast-team-block"]}><TeamMark team={teamA} fallback="A" />{display.teamNames && <div className={styles["broadcast-team-copy"]}><strong>{teamAName}</strong></div>}</div>
+    <div className={styles["broadcast-status-block"]}><span>STATUS</span><strong>{ticker.status || "LIVE"}</strong></div>
     {display.score && <div className={styles["broadcast-score-block"]}><strong>{ticker.score || "0-0"}</strong>{display.overs && <span>{ticker.overs || "0.0"} OV</span>}</div>}
     {!display.score && display.overs && <div className={styles["broadcast-score-block"]}><span>{ticker.overs || "0.0"} OV</span></div>}
     {display.target && ticker.target && <div className={styles["broadcast-mini-block"]}><span>TARGET</span><strong>{ticker.target}</strong></div>}
     {display.batsmen && <><div className={styles["broadcast-player-block"]}><strong>{ticker.batsman1.name || "BATSMAN 1"}</strong><span>{ticker.batsman1.runs || "0"} ({ticker.batsman1.balls || "0"})</span></div><div className={`${styles["broadcast-player-block"]} ${styles.secondary}`}><strong>{ticker.batsman2.name || "BATSMAN 2"}</strong><span>{ticker.batsman2.runs || "0"} ({ticker.batsman2.balls || "0"})</span></div></>}
     {display.lastSix && <Balls values={ticker.lastSix} />}
     {display.bowler && <div className={styles["broadcast-bowler-block"]}><span>BOWLER</span><strong>{ticker.bowler.name || "BOWLER"}</strong><small>{ticker.bowler.figures || "0-0"}</small></div>}
-    <div className={`${styles["broadcast-team-block"]} ${styles["right-team"]}`}>{display.teamNames && <div className={`${styles["broadcast-team-copy"]} ${styles.right}`}><strong>{teamB?.shortName || "TEAM B"}</strong>{display.toss && <span>{ticker.toss || ""}</span>}</div>}<TeamMark team={teamB} fallback="B" /></div>
+    {display.toss && ticker.toss && <div className={styles["broadcast-toss-block"]}><span>TOSS</span><strong>{ticker.toss}</strong></div>}
+    <div className={`${styles["broadcast-team-block"]} ${styles["right-team"]}`}>{display.teamNames && <div className={`${styles["broadcast-team-copy"]} ${styles.right}`}><strong>{teamBName}</strong></div>}<TeamMark team={teamB} fallback="B" /></div>
     {display.venue && ticker.venue && <div className={styles["broadcast-footer-text"]}><span>{ticker.venue}</span></div>}
   </div></div>;
 }
