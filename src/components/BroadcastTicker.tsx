@@ -17,15 +17,7 @@ function TeamMark({ team, fallback }: { team?: TickerTeam; fallback: string }) {
 }
 
 function Balls({ values }: { values: string[] }) {
-  return (
-    <div className={styles["broadcast-last-six"]} aria-label="Last six balls">
-      {values.slice(0, 6).map((value, index) => {
-        const normalized = String(value || "0").toUpperCase();
-        const cls = normalized === "W" ? styles.wicket : normalized === "4" || normalized === "6" ? styles.boundary : normalized === "0" ? styles.dot : styles.run;
-        return <span className={`${styles["broadcast-ball"]} ${cls}`} key={`${index}-${normalized}`}>{normalized}</span>;
-      })}
-    </div>
-  );
+  return <div className={styles["broadcast-last-six"]} aria-label="Last six balls">{values.slice(0, 6).map((value, index) => { const normalized = String(value || "0").toUpperCase(); const cls = normalized === "W" ? styles.wicket : normalized === "4" || normalized === "6" ? styles.boundary : normalized === "0" ? styles.dot : styles.run; return <span className={`${styles["broadcast-ball"]} ${cls}`} key={`${index}-${normalized}`}>{normalized}</span>; })}</div>;
 }
 
 export default function BroadcastTicker({ ticker, teams, displayOnly = false }: Props) {
@@ -39,96 +31,24 @@ export default function BroadcastTicker({ ticker, teams, displayOnly = false }: 
   const width = Math.max(640, Number(ticker.outputWidth ?? 1280));
   const height = Math.max(60, Number(ticker.outputHeight ?? 150));
 
-  return (
-    <div className={`${styles["broadcast-stage"]} ${displayOnly ? styles["broadcast-display"] : ""}`} style={{ width: `${width}px`, height: `${height}px`, fontFamily: ticker.font || "Arial, Helvetica, sans-serif", fontSize: `${scale}em` }}>
-      <div className={`${styles["broadcast-strip"]} ${styleClass}`}>
-        <div className={styles["broadcast-main-row"]}>
-          <div className={styles["broadcast-team-block"]}>
-            <TeamMark team={teamA} fallback="A" />
-            {display.teamNames && <div className={styles["broadcast-team-copy"]}><strong>{teamAName}</strong></div>}
-          </div>
-
-          {display.score && (
-            <div className={styles["broadcast-score-block"]}>
-              <strong>{ticker.score || "0-0"}</strong>
-              {display.overs && <span>{ticker.overs || "0.0"} OV</span>}
-            </div>
-          )}
-
-          {!display.score && display.overs && (
-            <div className={styles["broadcast-score-block"]}><span>{ticker.overs || "0.0"} OV</span></div>
-          )}
-
-          {display.target && ticker.target && (
-            <div className={styles["broadcast-mini-block"]}>
-              <span>TARGET</span><strong>{ticker.target}</strong>
-            </div>
-          )}
-
-          {(display.lastSix || display.bowler) && (
-            <div className={styles["broadcast-deliveries-block"]}>
-              {display.bowler && (
-                <div className={styles["broadcast-deliveries-head"]}>
-                  <span>BOWLER</span><strong>{ticker.bowler.name || "BOWLER"}</strong>
-                </div>
-              )}
-              {display.lastSix && <Balls values={ticker.lastSix} />}
-              {display.bowler && <small>{ticker.bowler.figures || "0-0"}</small>}
-            </div>
-          )}
-
-          <div className={`${styles["broadcast-team-block"]} ${styles["right-team"]}`}>
-            {display.teamNames && <div className={`${styles["broadcast-team-copy"]} ${styles.right}`}><strong>{teamBName}</strong></div>}
-            <TeamMark team={teamB} fallback="B" />
-          </div>
-        </div>
-
-        {(display.batsmen || (display.toss && ticker.toss)) && (
-          <div className={styles["broadcast-bottom-row"]}>
-            {display.batsmen && (
-              <div className={styles["broadcast-batsmen-block"]}>
-                <div className={styles["broadcast-batsman"]}>
-                  <strong>{ticker.batsman1.name || "BATSMAN 1"}</strong>
-                  <span>{ticker.batsman1.runs || "0"} ({ticker.batsman1.balls || "0"})</span>
-                </div>
-                <div className={styles["broadcast-batsman"]}>
-                  <strong>{ticker.batsman2.name || "BATSMAN 2"}</strong>
-                  <span>{ticker.batsman2.runs || "0"} ({ticker.batsman2.balls || "0"})</span>
-                </div>
-              </div>
-            )}
-
-            {display.toss && ticker.toss && (
-              <div className={styles["broadcast-toss-block"]}>
-                <span>OPENING TOSS</span><strong>{ticker.toss}</strong>
-              </div>
-            )}
-          </div>
-        )}
-
-        {display.venue && ticker.venue && (
-          <div className={styles["broadcast-footer-text"]}><span>{ticker.venue}</span></div>
-        )}
-      </div>
+  return <div className={`${styles["broadcast-stage"]} ${displayOnly ? styles["broadcast-display"] : ""}`} style={{ width: `${width}px`, height: `${height}px`, fontFamily: ticker.font || "Arial, Helvetica, sans-serif", fontSize: `${scale}em` }}><div className={`${styles["broadcast-strip"]} ${styleClass}`}>
+    <div className={styles["broadcast-main-row"]}>
+      <div className={styles["broadcast-team-block"]}><TeamMark team={teamA} fallback="A" />{display.teamNames && <div className={styles["broadcast-team-copy"]}><strong>{teamAName}</strong></div>}</div>
+      {display.score && <div className={styles["broadcast-score-block"]}><strong>{ticker.score || "0-0"}</strong>{display.overs && <span>{ticker.overs || "0.0"} OV</span>}</div>}
+      {!display.score && display.overs && <div className={styles["broadcast-score-block"]}><span>{ticker.overs || "0.0"} OV</span></div>}
+      {display.batsmen && <div className={styles["broadcast-main-batsmen"]}><div><strong>{ticker.batsman1.name || "BATSMAN 1"}</strong><span>{ticker.batsman1.runs || "0"} ({ticker.batsman1.balls || "0"})</span></div><div><strong>{ticker.batsman2.name || "BATSMAN 2"}</strong><span>{ticker.batsman2.runs || "0"} ({ticker.batsman2.balls || "0"})</span></div></div>}
+      {(display.lastSix || display.bowler) && <div className={styles["broadcast-deliveries-block"]}>{display.bowler && <div className={styles["broadcast-deliveries-head"]}><span>BOWLER</span><strong>{ticker.bowler.name || "BOWLER"}</strong></div>}{display.lastSix && <Balls values={ticker.lastSix} />}{display.bowler && <small>{ticker.bowler.figures || "0-0"}</small>}</div>}
+      <div className={`${styles["broadcast-team-block"]} ${styles["right-team"]}`}>{display.teamNames && <div className={`${styles["broadcast-team-copy"]} ${styles.right}`}><strong>{teamBName}</strong></div>}<TeamMark team={teamB} fallback="B" /></div>
     </div>
-  );
+
+    {(display.target || (display.venue && ticker.venue) || (display.toss && ticker.toss)) && <div className={styles["broadcast-bottom-row"]}>
+      {display.target && ticker.target && <div className={styles["broadcast-bottom-item"]}><span>TARGET</span><strong>{ticker.target}</strong></div>}
+      {display.venue && ticker.venue && <div className={styles["broadcast-bottom-item"]}><span>VENUE</span><strong>{ticker.venue}</strong></div>}
+      {display.toss && ticker.toss && <div className={styles["broadcast-bottom-item"]}><span>OPENING TOSS</span><strong>{ticker.toss}</strong></div>}
+    </div>}
+
+    {display.venue && ticker.venue && <div className={styles["broadcast-footer-text"]}><span>{ticker.venue}</span></div>}
+  </div></div>;
 }
 
-export function useBroadcastTicker() {
-  const [data, setData] = useState<{ ticker: TickerData; teams: TickerTeam[] } | null>(null);
-  const [error, setError] = useState("");
-
-  async function load() {
-    try {
-      const response = await fetch("/api/broadcast-ticker", { cache: "no-store" });
-      const json = await response.json();
-      if (!response.ok) throw new Error(json.error || "Failed to load ticker.");
-      setData(json);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to load ticker.");
-    }
-  }
-
-  useEffect(() => { void load(); }, []);
-  return { data, error, reload: load };
-}
+export function useBroadcastTicker() { const [data, setData] = useState<{ ticker: TickerData; teams: TickerTeam[] } | null>(null); const [error, setError] = useState(""); async function load() { try { const response = await fetch("/api/broadcast-ticker", { cache: "no-store" }); const json = await response.json(); if (!response.ok) throw new Error(json.error || "Failed to load ticker."); setData(json); } catch (err) { setError(err instanceof Error ? err.message : "Failed to load ticker."); } } useEffect(() => { void load(); }, []); return { data, error, reload: load }; }
