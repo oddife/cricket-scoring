@@ -3,6 +3,8 @@
 import { useEffect, useState } from "react";
 import LeaguePanel from "@/components/LeaguePanel";
 import TournamentLogoEditor from "@/components/TournamentLogoEditor";
+import AppLogo from "@/components/AppLogo";
+import AppLogoEditor from "@/components/AppLogoEditor";
 
 type BowlingMode = "NORMAL" | "DOUBLE";
 type InningsMode = 2 | 4;
@@ -144,6 +146,8 @@ const formatLabels: Record<string, string> = {
   LEAGUE_KNOCKOUT: "League + Knockout",
   CUSTOM: "Custom",
 };
+
+const APP_NAME = "New Castle Cricket Scorer";
 
 export default function Home() {
   const [pageMode, setPageMode] =
@@ -3677,19 +3681,15 @@ function Header() {
         <button
             type="button"
             onClick={goBackToTournaments}
-            aria-label="Cricket Scorer - Back to tournaments"
+            aria-label={`${APP_NAME} - Back to tournaments`}
           className="flex min-w-0 items-center gap-3 rounded-lg px-2 py-1 transition hover:bg-white/10 hover:ring-1 hover:ring-white/10 active:scale-[0.99]" 
           >
             <span className="flex h-10 w-10 shrink-0 items-center justify-center overflow-hidden rounded-full bg-white shadow-sm">
-              <img
-                src="/logo_nobg.png"
-                alt="Cricket Scorer"
-                className="h-[135%] w-[135%] object-contain"
-              />
+              <AppLogo alt={APP_NAME} className="h-[135%] w-[135%] object-contain" />
             </span>
 
             <span className="truncate text-lg font-bold uppercase tracking-tight sm:text-xl">
-              Cricket Scorer
+              {APP_NAME}
             </span>
           </button>
 
@@ -3721,21 +3721,17 @@ function Header() {
       <div className="flex items-center justify-between gap-4">
         <button
           type="button"
-          aria-label="Cricket Scorer"
+          aria-label={APP_NAME}
           onClick={handleSecretLogoTap}
           className="flex min-w-0 items-center gap-3 rounded-xl px-2 py-1 transition hover:bg-slate-900 active:scale-[0.99]"
         >
           <span className="flex h-12 w-12 shrink-0 items-center justify-center overflow-hidden rounded-2xl bg-white shadow-lg">
-            <img
-              src="/logo_nobg.png"
-              alt="Cricket Scorer"
-              className="h-[135%] w-[135%] object-contain"
-            />
+            <AppLogo alt={APP_NAME} className="h-[135%] w-[135%] object-contain" />
           </span>
 
           <span className="min-w-0">
             <span className="block truncate text-2xl font-bold tracking-tight sm:text-3xl">
-              Cricket Scorer
+              {APP_NAME}
             </span>
 
             <span className="block text-sm text-slate-400">
@@ -4448,6 +4444,10 @@ late-800 disabled:opacity-50 [color-scheme:dark]"
                   <p className="mt-2 text-sm text-slate-400">Maintenance tools</p>
                 </div>
                 <button type="button" onClick={() => setMaintenanceMode("CLOSED")} className="rounded-xl border border-slate-700 px-3 py-2 text-slate-400 hover:bg-slate-800 [color-scheme:dark]">-</button>
+              </div>
+
+              <div className="mb-4">
+                <AppLogoEditor maintenancePin={maintenancePin} />
               </div>
 
               <div className="max-h-[55vh] space-y-3 overflow-y-auto">
@@ -6214,7 +6214,7 @@ r-emerald-500 [color-scheme:dark]"
         </section>
 
         <footer className="py-6 text-center text-xs text-slate-600">
-          Cricket Scorer
+          {APP_NAME}
         </footer>
       </div>
 
