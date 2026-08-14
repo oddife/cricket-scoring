@@ -23,7 +23,6 @@ export default function BroadcastTicker({ ticker, teams, displayOnly = false }: 
 
   return <div className={`${styles["broadcast-stage"]} ${displayOnly ? styles["broadcast-display"] : ""}`} style={{ fontFamily: ticker.font || "Arial, Helvetica, sans-serif", fontSize: `${scale}em` }}><div className={`${styles["broadcast-strip"]} ${stripClass}`}>
     <div className={styles["broadcast-team-block"]}><TeamMark team={teamA} fallback="A" />{display.teamNames && <div className={styles["broadcast-team-copy"]}><strong>{teamAName}</strong></div>}</div>
-    <div className={styles["broadcast-status-block"]}><span>STATUS</span><strong>{ticker.status || "LIVE"}</strong></div>
     {display.score && <div className={styles["broadcast-score-block"]}><strong>{ticker.score || "0-0"}</strong>{display.overs && <span>{ticker.overs || "0.0"} OV</span>}</div>}
     {!display.score && display.overs && <div className={styles["broadcast-score-block"]}><span>{ticker.overs || "0.0"} OV</span></div>}
     {display.target && ticker.target && <div className={styles["broadcast-mini-block"]}><span>TARGET</span><strong>{ticker.target}</strong></div>}
