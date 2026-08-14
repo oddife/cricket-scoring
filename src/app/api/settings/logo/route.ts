@@ -40,7 +40,7 @@ export async function GET() {
 
   try {
     const extension = path.extname(logoPath).slice(1).toLowerCase();
-    const data = await fs.readFile(logoPath);
+    const data = await fs.readFile(/*turbopackIgnore: true*/ logoPath);
 
     return new NextResponse(data, {
       status: 200,
