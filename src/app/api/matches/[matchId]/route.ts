@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { getMatchAwardSuggestions } from "@/lib/league";
 import { prisma } from "@/lib/prisma";
-import { calculateFourInningsPosition } from "@/scoring/match-rules";
+import { calculateInningsPosition } from "@/scoring/match-rules";
 
 type RouteContext = { params: Promise<{ matchId: string }> };
 
@@ -88,7 +88,7 @@ export async function GET(_request: Request, { params }: RouteContext) {
         runRate,
         economy,
         currentBowlerId,
-        leadDeficit: calculateFourInningsPosition({
+        leadDeficit: calculateInningsPosition({
           inningsNumber: current.inningsNumber,
           inningsPerMatch: match.inningsPerMatch as 2 | 4,
           battingTeamId: current.battingTeamId,
