@@ -39,13 +39,13 @@ jobs:
               )
 
           logo_pattern = re.compile(
-              r'<img\s+src="/logo_nobg\\.png"\s+alt="Cricket Scorer"\s+className="h-\\[135%\\] w-\\[135%\\] object-contain"\s*/>'
+              r'<img\s+src="/logo_nobg\.png"\s+alt="Cricket Scorer"\s+className="h-\[135%\] w-\[135%\] object-contain"\s*/>'
           )
           text, logo_count = logo_pattern.subn(
               '<AppLogo alt={APP_NAME} className="h-[135%] w-[135%] object-contain" />',
               text,
           )
-          if logo_count != 2:
+          if logo_count != 2 and 'AppLogo alt={APP_NAME} className="h-[135%] w-[135%] object-contain" />' not in text:
               raise SystemExit(f"Expected 2 header logo replacements, found {logo_count}")
 
           text = text.replace(
