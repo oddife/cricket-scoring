@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
 import ProfileLinkBridge from "@/components/ProfileLinkBridge";
 import TickerDarkModeToggle from "@/components/TickerDarkModeToggle";
+import OfflineRuntime from "@/components/OfflineRuntime";
 import "./globals.css";
 
 const geistSans = Geist({
@@ -17,6 +18,8 @@ const geistMono = Geist_Mono({
 export const metadata: Metadata = {
   title: "New Castle Cricket Scorer",
   description: "New Castle Cricket Scorer",
+  manifest: "/manifest.webmanifest",
+  themeColor: "#050505",
 };
 
 type RootLayoutProps = Readonly<{
@@ -32,6 +35,7 @@ export default function RootLayout({ children }: RootLayoutProps) {
       <body className="min-h-full flex flex-col">
         <ProfileLinkBridge />
         <TickerDarkModeToggle />
+        <OfflineRuntime />
         {children}
       </body>
     </html>
