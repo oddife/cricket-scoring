@@ -74,9 +74,14 @@ export async function GET(
       );
     }
 
+    // The scorer reads `data.deliveries`, so there is no need to send the
+    // same delivery array again as `data.innings.deliveries`. This cuts the
+    // refresh JSON payload roughly in half as an innings grows.
+    const { deliveries, ...inningsWithoutDeliveries } = innings;
+
     return NextResponse.json({
-      innings,
-      deliveries: innings.deliveries,
+      innings: inningsWithoutDeliveries,
+      deliveries,
     });
   } catch (error) {
     console.error("GET innings error:", error);
