@@ -25,6 +25,16 @@ export async function GET(
             inningsPerMatch: true,
             oddOvers: true,
             playersPerTeam: true,
+            innings: {
+              orderBy: { inningsNumber: "asc" },
+              select: {
+                inningsNumber: true,
+                battingTeamId: true,
+                totalRuns: true,
+                wickets: true,
+                target: true,
+              },
+            },
           },
         },
         deliveries: {
@@ -74,9 +84,8 @@ export async function GET(
       );
     }
 
-    // The scorer reads `data.deliveries`, so there is no need to send the
-    // same delivery array again as `data.innings.deliveries`. This cuts the
-    // refresh JSON payload roughly in half as an innings grows.
+    // Keep deliveries at the top level because that is the scorer's existing
+    // response contract. This avoids serializing the large delivery array twice.
     const { deliveries, ...inningsWithoutDeliveries } = innings;
 
     return NextResponse.json({
