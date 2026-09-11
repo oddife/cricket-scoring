@@ -1,0 +1,19 @@
+name: Inspect LiveScoring
+on:
+  workflow_dispatch:
+jobs:
+  inspect:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Inspect
+        run: |
+          python3 - <<'PY'
+          p='src/components/HomeContent.tsx'
+          s=open(p).read()
+          a=s.index('const currentOverDeliveries = liveDeliveries.filter')
+          b=s.index('return (', a)
+          print('---DERIVED BLOCK---')
+          print(s[a:b])
+          print('---END---')
+          PY
