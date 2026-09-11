@@ -1,0 +1,38 @@
+name: Sync bowler state
+
+on:
+  push:
+    branches:
+      - performance/mobile-optimization-2026-09
+
+permissions:
+  contents: write
+
+jobs:
+  fix:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: performance/mobile-optimization-2026-09
+          fetch-depth: 1
+      - name: Add authoritative bowler state updates
+        shell: python
+        run: |
+          from pathlib import Path
+          p = Path('src/components/HomeContent.tsx')
+          text = p.read_text()
+          old = '''          battingTeamId: data.innings.battingTeamId ?? liveBattingTeamId,\n          target: data.innings.target ?? null,\n        };'''
+          new = '''          battingTeamId: data.innings.battingTeamId ?? liveBattingTeamId,\n          target: data.innings.target ?? null,\n        };\n        setLivePreviousBowlerAId(\n          data.innings.previousOverBowlerAId ?? livePreviousBowlerAId,\n        );\n        setLivePreviousBowlerBId(\n          data.innings.previousOverBowlerBId ?? livePreviousBowlerBId,\n        );\n        setLiveBowlerAId(data.innings.currentBowlerAId ?? liveBowlerAId);\n        setLiveBowlerBId(data.innings.currentBowlerBId ?? liveBowlerBId);'''
+          if old not in text:
+              raise SystemExit('history update block not found')
+          p.write_text(text.replace(old, new, 1))
+      - name: Commit and remove helper
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          rm -f .github/workflows/fix-bowler-sync.yml
+          git add -A
+          git commit -m "Sync bowler state from delivery response"
+          git push origin HEAD:performance/mobile-optimization-2026-09
