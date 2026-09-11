@@ -132,6 +132,7 @@ export async function POST(
     return NextResponse.json({
       ...result,
       result,
+      delivery: result.delivery,
       innings: finalInnings,
       matchCompleted,
       nextStrikerId: result.nextStrikerId ?? finalInnings?.currentStrikerId,
