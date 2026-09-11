@@ -2133,29 +2133,19 @@ const [resumingMatchId, setResumingMatchId] =
 
       setLiveDeliveries(deliveries);
 
-      if (matchId) {
-        try {
-          const matchResponse = await fetch(`/api/matches/${matchId}`, { cache: "no-store" });
-          const matchData = await matchResponse.json();
-          const matchInnings = Array.isArray(matchData?.match?.innings)
-            ? matchData.match.innings
-            : Array.isArray(matchData?.innings)
-              ? matchData.innings
-              : [];
-          if (matchInnings.length > 0) {
-            setLiveInningsHistory(
-              matchInnings.map((item: { inningsNumber: number; totalRuns: number; wickets?: number; battingTeamId: string; target?: number | null }) => ({
-                inningsNumber: Number(item.inningsNumber),
-                totalRuns: Number(item.totalRuns ?? 0),
-                wickets: Number(item.wickets ?? 0),
-                battingTeamId: item.battingTeamId,
-                target: item.target ?? null,
-              })),
-            );
-          }
-        } catch (historyError) {
-          console.error("Failed to refresh innings history:", historyError);
-        }
+      const matchInnings = Array.isArray(data.innings?.match?.innings)
+        ? data.innings.match.innings
+        : [];
+      if (matchInnings.length > 0) {
+        setLiveInningsHistory(
+          matchInnings.map((item: { inningsNumber: number; totalRuns: number; wickets?: number; battingTeamId: string; target?: number | null }) => ({
+            inningsNumber: Number(item.inningsNumber),
+            totalRuns: Number(item.totalRuns ?? 0),
+            wickets: Number(item.wickets ?? 0),
+            battingTeamId: item.battingTeamId,
+            target: item.target ?? null,
+          })),
+        );
       }
       setLiveBattingTeamId(innings.battingTeamId ?? "");
       setLiveBowlingTeamId(innings.bowlingTeamId ?? "");
