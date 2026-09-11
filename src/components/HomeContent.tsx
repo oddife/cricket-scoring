@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useState } from "react";
 import LeaguePanel from "@/components/LeaguePanel";
 import TournamentLogoEditor from "@/components/TournamentLogoEditor";
 import AppLogo from "@/components/AppLogo";
@@ -2530,6 +2530,8 @@ setLiveBowlerId(refreshedCurrentBowlerId);
               liveCurrentOver + 1,
           ),
         );
+        setLiveCurrentBall(1);
+        setLiveDeliveryCount(0);
 const needsAutomaticStrikeSwap = Boolean(
   data.needsManualStrikeSwap ??
     result.needsManualStrikeSwap,

@@ -142,6 +142,16 @@ export async function POST(
       previousOverBowlerAId: innings.previousOverBowlerAId,
       previousOverBowlerBId: innings.previousOverBowlerBId,
       target: innings.target,
+      inningsNumber: innings.inningsNumber,
+      battingTeamId: innings.battingTeamId,
+      bowlingTeamId: innings.bowlingTeamId,
+      previousOverBowlerAId: innings.previousOverBowlerAId,
+      previousOverBowlerBId: innings.previousOverBowlerBId,
+      match: {
+        id: innings.match.id,
+        inningsPerMatch: innings.match.inningsPerMatch,
+        innings: innings.match.innings,
+      },
     };
 
     return NextResponse.json({
