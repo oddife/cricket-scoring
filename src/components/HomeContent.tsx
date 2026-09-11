@@ -6459,7 +6459,7 @@ r-emerald-500 [color-scheme:dark]"
           </div>
         </div>
       )}
-      <CreateTournament />
+      {CreateTournament()}
       <AddTeamModal />
       {AddPlayerModal()}
       <MaintenanceModal />
