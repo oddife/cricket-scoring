@@ -1,4 +1,4 @@
-"use client";
+﻿"use client";
 
 import { useEffect, useMemo, useState } from "react";
 import LeaguePanel from "@/components/LeaguePanel";
@@ -149,6 +149,7 @@ const formatLabels: Record<string, string> = {
 };
 
 const APP_NAME = "New Castle Cricket Scorer";
+const ACTIVE_MATCH_STORAGE_KEY = "new-castle-cricket-scorer-active-match";
 
 export default function Home() {
   const [pageMode, setPageMode] =
@@ -1426,6 +1427,10 @@ const [resumingMatchId, setResumingMatchId] =
       setLiveNeedsManualSwap(false);
       setNextOverBowlerAId("");
       setNextOverBowlerBId("");
+      window.sessionStorage.setItem(
+        ACTIVE_MATCH_STORAGE_KEY,
+        match.id,
+      );
       setPageMode("LIVE_SCORING");
 
       await refreshLiveInnings(currentInnings.id, match.id);
@@ -1440,6 +1445,107 @@ const [resumingMatchId, setResumingMatchId] =
       setResumingMatchId(null);
     }
   }
+
+  // ---------------------------------------------------------
+  // Restore active scorer after an accidental browser refresh
+  // ---------------------------------------------------------
+
+  useEffect(() => {
+    const savedMatchId = window.sessionStorage.getItem(
+      ACTIVE_MATCH_STORAGE_KEY,
+    );
+
+    if (!savedMatchId) {
+      return;
+    }
+
+    let cancelled = false;
+
+    async function restoreActiveMatch() {
+      try {
+        const response = await fetch(
+          `/api/matches/${savedMatchId}`,
+          { cache: "no-store" },
+        );
+
+        if (!response.ok) {
+          window.sessionStorage.removeItem(
+            ACTIVE_MATCH_STORAGE_KEY,
+          );
+          return;
+        }
+
+        const data = await response.json();
+        const match = data.match ?? data;
+        const innings = Array.isArray(match.innings)
+          ? match.innings
+          : [];
+
+        const hasLiveInnings = innings.some(
+          (item: { status?: string }) =>
+            item.status === "LIVE",
+        );
+
+        if (!hasLiveInnings) {
+          window.sessionStorage.removeItem(
+            ACTIVE_MATCH_STORAGE_KEY,
+          );
+          return;
+        }
+
+        if (cancelled) {
+          return;
+        }
+
+        const tournamentId = match.tournamentId;
+
+        if (tournamentId) {
+          const tournamentResponse = await fetch(
+            "/api/tournaments",
+            { cache: "no-store" },
+          );
+
+          if (tournamentResponse.ok) {
+            const tournamentData =
+              await tournamentResponse.json();
+
+            if (Array.isArray(tournamentData)) {
+              setTournaments(tournamentData);
+
+              const tournament =
+                tournamentData.find(
+                  (item: Tournament) =>
+                    item.id === tournamentId,
+                );
+
+              if (tournament) {
+                setSelectedTournament(tournament);
+              }
+            }
+          }
+        }
+
+        if (!cancelled) {
+          await resumeMatch(savedMatchId);
+        }
+      } catch (err) {
+        console.error(
+          "Automatic active-match restore failed:",
+          err,
+        );
+
+        window.sessionStorage.removeItem(
+          ACTIVE_MATCH_STORAGE_KEY,
+        );
+      }
+    }
+
+    void restoreActiveMatch();
+
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   // ---------------------------------------------------------
   // Tournament navigation
@@ -1969,6 +2075,10 @@ const [resumingMatchId, setResumingMatchId] =
       setLiveOddOvers(
         bowlingMode === "DOUBLE" &&
         oversPerInnings % 2 === 1,
+      );
+      window.sessionStorage.setItem(
+        ACTIVE_MATCH_STORAGE_KEY,
+        createdMatchId,
       );
       setPageMode("LIVE_SCORING");
       void refreshLiveInnings(data.id, createdMatchId);
@@ -3288,7 +3398,7 @@ if (needsAutomaticStrikeSwap && liveInningsId && !inningsComplete) {
         : "border border-slate-300 bg-slate-100 text-slate-800 hover:bg-slate-200"
   }`}
 >
-  {liveAutoSwapNotice ? "Auto-swapped ✓" : "Swap Batsmen"}
+  {liveAutoSwapNotice ? "Auto-swapped âœ“" : "Swap Batsmen"}
 </button>
                     <button type="button" onClick={() => { setManualStrikerId(liveStrikerId); setManualNonStrikerId(liveNonStrikerId); setManualActionMenu("BATSMAN"); }} disabled={liveLoading || liveInningsComplete} className="h-11 rounded-lg border border-slate-300 bg-slate-100 px-4 font-bold text-slate-800 disabled:opacity-40">Change Batsman</button>
                     <button type="button" onClick={() => { setManualBowlerAId(liveBowlerAId || liveBowlerId); setManualBowlerBId(liveBowlerBId); setManualActionMenu("BOWLER"); }} disabled={liveLoading || liveInningsComplete} className="h-11 rounded-lg border border-slate-300 bg-slate-100 px-4 font-bold text-slate-800 disabled:opacity-40">Change Bowler</button>
@@ -3571,7 +3681,7 @@ if (needsAutomaticStrikeSwap && liveInningsId && !inningsComplete) {
           </select>
         </div>
       ) : (
-        <div className="rounded-lg border border-red-300 bg-red-50 px-4 py-3 text-sm font-black text-red-700">ALL OUT — no replacement batsman available.</div>
+        <div className="rounded-lg border border-red-300 bg-red-50 px-4 py-3 text-sm font-black text-red-700">ALL OUT â€” no replacement batsman available.</div>
       )}
               </div>
               <div className="mt-6 grid grid-cols-2 gap-3"><button type="button" onClick={() => { setShowWicketPanel(false); setPendingWicketExtraType(null); setPendingWicketExtraRuns(0); setReplacementPlayerId(""); setFielderId(""); }} className="h-12 rounded-lg border border-slate-300 font-semibold [color-scheme:dark]">Cancel</button><button type="button" disabled={(nextBatsmen.length > 0 && !replacementPlayerId) || liveLoading || ((wicketType === "CAUGHT" || wicketType === "RUN_OUT" || wicketType === "STUMPED") && !fielderId)} onClick={() => void recordLiveDelivery({ isWicket: true, wicketType, dismissedPlayerId, replacementPlayerId, ...(fielderId ? { fielderId } : {}), ...(pendingWicketExtraType ? { runsExtra: pendingWicketExtraRuns, extraType: pendingWicketExtraType } : {}) })} className="h-12 rounded-lg bg-red-500 font-bold text-white disabled:opacity-40 [color-scheme:dark]">Confirm Wicket</button></div>
@@ -3670,7 +3780,7 @@ function Header() {
             <span className="max-w-[220px] truncate font-semibold">
               {selectedTournament?.name ?? "Tournament"}
             </span>
-            <span className="text-slate-500">·</span>
+            <span className="text-slate-500">Â·</span>
             <span className="text-slate-300">
               Live Match
             </span>
@@ -3804,7 +3914,7 @@ cus:border-emerald-500 focus:ring-2 focus:ring-emerald-500/20 [color-scheme:dark
                 >
                   {tournament.name}
                   {tournament.season
-                    ? ` {String.fromCharCode(0x2014)} ${tournament.season}`
+                    ? ` — ${tournament.season}`
                     : ""}
                 </option>
               ),
@@ -4785,7 +4895,7 @@ hover:bg-emerald-500/10 [color-scheme:dark]"
                         <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-slate-800 text-lg">
                           {String.fromCodePoint(0x1F3CF)}
                         </div>
-                        <button type="button" title="Remove team from this tournament" aria-label={`Remove ${tournamentTeam.team.name} from this tournament`} onClick={(event) => { event.stopPropagation(); void removeTeamFromCurrentTournament(tournamentTeam.team.id, tournamentTeam.team.name); }} className="flex h-9 w-9 items-center justify-center rounded-xl border border-red-500/30 bg-red-500/10 text-lg font-bold text-red-400 transition hover:bg-red-500/20">−</button>
+                        <button type="button" title="Remove team from this tournament" aria-label={`Remove ${tournamentTeam.team.name} from this tournament`} onClick={(event) => { event.stopPropagation(); void removeTeamFromCurrentTournament(tournamentTeam.team.id, tournamentTeam.team.name); }} className="flex h-9 w-9 items-center justify-center rounded-xl border border-red-500/30 bg-red-500/10 text-lg font-bold text-red-400 transition hover:bg-red-500/20">âˆ’</button>
                       </div>
                     </div>
 
@@ -4912,7 +5022,7 @@ hover:bg-emerald-500/10 [color-scheme:dark]"
                           <span>EDIT</span>
                         </button>
 
-                        <button type="button" title="Remove player from current roster" aria-label={`Remove ${membership.player.name} from current roster`} onClick={() => void removePlayerFromCurrentRoster(membership.player.id, membership.player.name)} className="flex h-10 w-10 items-center justify-center rounded-xl border border-red-500/30 bg-red-500/10 text-xl font-bold text-red-400 transition hover:bg-red-500/20">−</button>
+                        <button type="button" title="Remove player from current roster" aria-label={`Remove ${membership.player.name} from current roster`} onClick={() => void removePlayerFromCurrentRoster(membership.player.id, membership.player.name)} className="flex h-10 w-10 items-center justify-center rounded-xl border border-red-500/30 bg-red-500/10 text-xl font-bold text-red-400 transition hover:bg-red-500/20">âˆ’</button>
                       </div>
                     </div>
                   </div>
@@ -6326,6 +6436,4 @@ r-emerald-500 [color-scheme:dark]"
     </main>
   );
 }
-
-
 
