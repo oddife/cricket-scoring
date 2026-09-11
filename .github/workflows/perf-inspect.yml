@@ -1,6 +1,7 @@
 name: Inspect LiveScoring
 on:
-  workflow_dispatch:
+  push:
+    branches: [performance/mobile-optimization-2026-09]
 jobs:
   inspect:
     runs-on: ubuntu-latest
@@ -9,8 +10,7 @@ jobs:
       - name: Inspect
         run: |
           python3 - <<'PY'
-          p='src/components/HomeContent.tsx'
-          s=open(p).read()
+          s=open('src/components/HomeContent.tsx').read()
           a=s.index('const currentOverDeliveries = liveDeliveries.filter')
           b=s.index('return (', a)
           print('---DERIVED BLOCK---')
