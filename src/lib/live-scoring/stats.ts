@@ -74,8 +74,7 @@ export type LiveScoringStats = {
 
 /**
  * Aggregate the live scorecard in one pass through the delivery list.
- * Keeping this outside the page component makes the calculation cheap to
- * memoize and prevents each scorecard section from scanning all deliveries.
+ * This avoids separate full-history scans for partnership calculations.
  */
 export function calculateLiveScoringStats(
   deliveries: LiveScoringDelivery[],
@@ -101,22 +100,10 @@ export function calculateLiveScoringStats(
     total: 0,
   };
 
-  let partnershipStart = 0;
-  for (let index = deliveries.length - 1; index >= 0; index -= 1) {
-    if (deliveries[index].isWicket) {
-      partnershipStart = index + 1;
-      break;
-    }
-  }
-
-  const partnershipDeliveries = deliveries.slice(partnershipStart);
-  const partnership: LivePartnership = {
-    runs: partnershipDeliveries.reduce((sum, delivery) => sum + delivery.runsTotal, 0),
-    balls: partnershipDeliveries.filter((delivery) => delivery.isLegal).length,
-  };
-
   const fallOfWickets: LiveFallOfWicket[] = [];
   let runningScore = 0;
+  let partnershipRuns = 0;
+  let partnershipBalls = 0;
 
   for (const delivery of deliveries) {
     runningScore += delivery.runsTotal;
@@ -163,6 +150,13 @@ export function calculateLiveScoringStats(
         createdAt: delivery.createdAt,
         wicketType: delivery.wicket.type,
       });
+      // The wicket ball belongs to the completed partnership. The next ball
+      // starts the new partnership, matching the previous calculation.
+      partnershipRuns = 0;
+      partnershipBalls = 0;
+    } else {
+      partnershipRuns += delivery.runsTotal;
+      if (delivery.isLegal) partnershipBalls += 1;
     }
   }
 
@@ -189,7 +183,10 @@ export function calculateLiveScoringStats(
       })
       .filter((player) => player.legalBalls > 0 || player.runs > 0 || player.wickets > 0),
     extras,
-    partnership,
+    partnership: {
+      runs: partnershipRuns,
+      balls: partnershipBalls,
+    },
     fallOfWickets,
   };
 }
