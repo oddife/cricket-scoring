@@ -1446,6 +1446,17 @@ const [resumingMatchId, setResumingMatchId] =
     }
   }
 
+  // Keep the refresh-resume key synchronized with the current page.
+  // Only LIVE_SCORING should survive an accidental browser refresh.
+  useEffect(() => {
+    if (pageMode === "LIVE_SCORING") {
+      return;
+    }
+
+    window.sessionStorage.removeItem(
+      ACTIVE_MATCH_STORAGE_KEY,
+    );
+  }, [pageMode]);
   // ---------------------------------------------------------
   // Restore active scorer after an accidental browser refresh
   // ---------------------------------------------------------
