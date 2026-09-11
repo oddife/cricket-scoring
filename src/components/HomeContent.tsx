@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import LeaguePanel from "@/components/LeaguePanel";
 import TournamentLogoEditor from "@/components/TournamentLogoEditor";
 import AppLogo from "@/components/AppLogo";
@@ -2634,8 +2634,45 @@ if (needsAutomaticStrikeSwap && liveInningsId) {
         }
       }
 
+      // The delivery POST already returns the persisted delivery and the
+      // authoritative innings state. Update local scorer state directly
+      // instead of downloading the entire innings history again after
+      // every ball. A full refresh remains available for resume/manual
+      // recovery and the explicit Refresh button.
+      const persistedDelivery = data.delivery ?? result.delivery;
+      if (persistedDelivery?.id) {
+        const deliveryView: LiveDeliveryView = {
+          id: String(persistedDelivery.id),
+          overNumber: Number(persistedDelivery.overNumber ?? data.currentOver ?? result.currentOver ?? liveCurrentOver),
+          ballNumber: Number(persistedDelivery.ballNumber ?? data.currentBall ?? result.currentBall ?? liveCurrentBall),
+          bowlerId: String(persistedDelivery.bowlerId ?? liveBowlerId),
+          strikerId: String(persistedDelivery.strikerId ?? liveStrikerId),
+          nonStrikerId: String(persistedDelivery.nonStrikerId ?? liveNonStrikerId),
+          runsBat: Number(persistedDelivery.runsBat ?? input.runsBat ?? 0),
+          runsExtra: Number(persistedDelivery.runsExtra ?? input.runsExtra ?? 0),
+          runsTotal: Number(persistedDelivery.runsTotal ?? result.runsTotal ?? totalRuns),
+          isLegal: Boolean(persistedDelivery.isLegal ?? (input.extraType !== "WIDE" && input.extraType !== "NO_BALL")),
+          extraType: persistedDelivery.extraType ?? input.extraType ?? null,
+          isWicket: Boolean(persistedDelivery.isWicket ?? input.isWicket),
+          createdAt: String(persistedDelivery.createdAt ?? new Date().toISOString()),
+          bowler: persistedDelivery.bowler ?? liveBowlingPlayers.find((player) => player.id === liveBowlerId) ?? { id: liveBowlerId, name: "Bowler", jerseyNumber: null },
+          striker: persistedDelivery.striker ?? liveBattingPlayers.find((player) => player.id === liveStrikerId) ?? { id: liveStrikerId, name: "Batsman", jerseyNumber: null },
+          nonStriker: persistedDelivery.nonStriker ?? liveBattingPlayers.find((player) => player.id === liveNonStrikerId) ?? { id: liveNonStrikerId, name: "Batsman", jerseyNumber: null },
+          wicket: persistedDelivery.wicket ?? (input.isWicket && input.dismissedPlayerId ? { type: input.wicketType ?? "OUT", dismissedPlayerId: input.dismissedPlayerId, bowlerId: liveBowlerId || null, fielderId: input.fielderId ?? null } : null),
+        };
+        setLiveDeliveries((current) => current.some((delivery) => delivery.id === deliveryView.id) ? current : [...current, deliveryView]);
+      }
+      if (data.innings) {
+        const historyEntry: LiveInningsHistory = {
+          inningsNumber: Number(data.innings.inningsNumber ?? liveInningsNumber),
+          totalRuns: Number(data.innings.totalRuns ?? liveRuns + totalRuns),
+          wickets: Number(data.innings.wickets ?? liveWickets + (input.isWicket ? 1 : 0)),
+          battingTeamId: data.innings.battingTeamId ?? liveBattingTeamId,
+          target: data.innings.target ?? null,
+        };
+        setLiveInningsHistory((current) => [...current.filter((item) => item.inningsNumber !== historyEntry.inningsNumber), historyEntry].sort((a, b) => a.inningsNumber - b.inningsNumber));
+      }
       setLiveUndoAvailable(true);
-      await refreshLiveInnings(liveInningsId, createdMatchId);
 
       setShowWicketPanel(false);
       setShowCustomDeliveryPanel(false);
