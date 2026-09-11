@@ -2931,10 +2931,6 @@ if (needsAutomaticStrikeSwap && liveInningsId) {
   [liveDeliveries, liveBattingPlayers, liveBowlingPlayers],
 );
 
-const liveScoringStats = useMemo(
-      () => calculateLiveScoringStats(liveDeliveries, liveBattingPlayers, liveBowlingPlayers),
-      [liveDeliveries, liveBattingPlayers, liveBowlingPlayers],
-    );
 
     const currentOverDeliveries = liveDeliveries.filter(
       (delivery) => delivery.overNumber === currentOverNumber,
@@ -3382,7 +3378,7 @@ const liveScoringStats = useMemo(
                   </div>
                 </div>
 
-                {liveBowlerId === "" && !liveInningsComplete && (
+                {(liveBowlerId === "" && !liveInningsComplete && (!doubleMode || liveLegalBalls % 12 === 0 || liveCurrentOver >= oversPerInnings)) && (
                   <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm [color-scheme:dark]">
                     <p className="text-xs font-bold uppercase tracking-wide text-slate-600">Select Next Over</p>
                     <select value={nextOverBowlerAId} onChange={(event) => setNextOverBowlerAId(event.target.value)} className="mt-3 h-11 w-full rounded-lg border border-slate-700 bg-slate-950 px-3 text-white [color-scheme:dark] [color-scheme:dark]">
@@ -6330,4 +6326,5 @@ r-emerald-500 [color-scheme:dark]"
     </main>
   );
 }
+
 
