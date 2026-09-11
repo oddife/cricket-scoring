@@ -2931,7 +2931,12 @@ if (needsAutomaticStrikeSwap && liveInningsId) {
   [liveDeliveries, liveBattingPlayers, liveBowlingPlayers],
 );
 
-const currentOverDeliveries = liveDeliveries.filter(
+const liveScoringStats = useMemo(
+      () => calculateLiveScoringStats(liveDeliveries, liveBattingPlayers, liveBowlingPlayers),
+      [liveDeliveries, liveBattingPlayers, liveBowlingPlayers],
+    );
+
+    const currentOverDeliveries = liveDeliveries.filter(
       (delivery) => delivery.overNumber === currentOverNumber,
     );
     const recentDeliveries = [...liveDeliveries].reverse().slice(0, 7);
@@ -2953,17 +2958,19 @@ const currentOverDeliveries = liveDeliveries.filter(
         !dismissedIds.has(player.id),
     );
 
-    const battingStats = liveScoringStats.batting.map((player) => ({
-  ...player,
-  player: liveBattingPlayers.find((candidate) => candidate.id === player.id),
-}));
+    const battingStats = liveScoringStats.batting.map((stat) => ({
+      player: liveBattingPlayers.find((player) => player.id === stat.id)!,
+      runs: stat.runs, balls: stat.balls, fours: stat.fours, sixes: stat.sixes,
+      strikeRate: stat.balls ? ((stat.runs / stat.balls) * 100).toFixed(2) : "0.00",
+      dismissed: liveDeliveries.some((delivery) => delivery.wicket?.dismissedPlayerId === stat.id),
+    }));
 
-const bowlingStats = liveScoringStats.bowling.map((player) => ({
-  ...player,
-  player: liveBowlingPlayers.find((candidate) => candidate.id === player.id),
-}));
+    const bowlingStats = liveScoringStats.bowling.map((stat) => ({
+      player: liveBowlingPlayers.find((player) => player.id === stat.id)!,
+      deliveries: stat.legalBalls, legal: stat.legalBalls, overs: stat.overs, runs: stat.runs, wickets: stat.wickets, economy: stat.legalBalls ? stat.economy.toFixed(2) : "0.00",
+    }));
 
-const currentPartnershipDeliveries = (() => {
+    const currentPartnershipDeliveries = (() => {
       let index = liveDeliveries.length - 1;
       while (index >= 0 && !liveDeliveries[index].wicket) index -= 1;
       return liveDeliveries.slice(index + 1);
