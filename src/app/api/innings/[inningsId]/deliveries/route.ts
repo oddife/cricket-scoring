@@ -145,8 +145,6 @@ export async function POST(
       inningsNumber: innings.inningsNumber,
       battingTeamId: innings.battingTeamId,
       bowlingTeamId: innings.bowlingTeamId,
-      previousOverBowlerAId: innings.previousOverBowlerAId,
-      previousOverBowlerBId: innings.previousOverBowlerBId,
       match: {
         id: innings.match.id,
         inningsPerMatch: innings.match.inningsPerMatch,
