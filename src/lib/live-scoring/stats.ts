@@ -23,7 +23,7 @@ export type LiveScoringDelivery = {
 export type LiveScoringPlayer = {
   id: string;
   name: string;
-  jerseyNumber: number | null;
+  jerseyNumber?: number | null;
 };
 
 export type LiveBattingStat = LiveScoringPlayer & {

@@ -1,4 +1,4 @@
-﻿"use client";
+"use client";
 
 import { useEffect, useMemo, useState } from "react";
 import LeaguePanel from "@/components/LeaguePanel";
@@ -1459,6 +1459,7 @@ const [resumingMatchId, setResumingMatchId] =
       return;
     }
 
+    const activeMatchId = savedMatchId;
     let cancelled = false;
 
     async function restoreActiveMatch() {
@@ -1526,7 +1527,7 @@ const [resumingMatchId, setResumingMatchId] =
         }
 
         if (!cancelled) {
-          await resumeMatch(savedMatchId);
+          await resumeMatch(activeMatchId);
         }
       } catch (err) {
         console.error(
@@ -6436,4 +6437,3 @@ r-emerald-500 [color-scheme:dark]"
     </main>
   );
 }
-
