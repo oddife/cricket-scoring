@@ -1,0 +1,47 @@
+name: Cleanup mobile optimization helpers
+
+on:
+  push:
+    branches:
+      - performance/mobile-optimization-2026-09
+
+permissions:
+  contents: write
+
+jobs:
+  cleanup:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: performance/mobile-optimization-2026-09
+          fetch-depth: 1
+      - name: Fix generated route and remove temporary workflows
+        shell: python
+        run: |
+          from pathlib import Path
+          route = Path('src/app/api/innings/[inningsId]/deliveries/route.ts')
+          text = route.read_text()
+          duplicate = '''      previousOverBowlerAId: innings.previousOverBowlerAId,\n      previousOverBowlerBId: innings.previousOverBowlerBId,\n      target: innings.target,\n      inningsNumber: innings.inningsNumber,\n      battingTeamId: innings.battingTeamId,\n      bowlingTeamId: innings.bowlingTeamId,\n      previousOverBowlerAId: innings.previousOverBowlerAId,\n      previousOverBowlerBId: innings.previousOverBowlerBId,'''
+          fixed = '''      previousOverBowlerAId: innings.previousOverBowlerAId,\n      previousOverBowlerBId: innings.previousOverBowlerBId,\n      target: innings.target,\n      inningsNumber: innings.inningsNumber,\n      battingTeamId: innings.battingTeamId,\n      bowlingTeamId: innings.bowlingTeamId,'''
+          if duplicate not in text:
+              raise SystemExit('duplicate route fields not found')
+          route.write_text(text.replace(duplicate, fixed, 1))
+
+          for name in [
+              'apply-mobile-optimization.yml',
+              'finish-mobile-optimization.yml',
+              'cleanup-mobile-optimization.yml',
+          ]:
+              p = Path('.github/workflows') / name
+              if p.exists():
+                  p.unlink()
+      - name: Commit final cleanup
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          git diff --cached --quiet && exit 0
+          git commit -m "Clean up mobile optimization helpers"
+          git push origin HEAD:performance/mobile-optimization-2026-09
