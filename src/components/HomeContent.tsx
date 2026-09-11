@@ -1,10 +1,11 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import LeaguePanel from "@/components/LeaguePanel";
 import TournamentLogoEditor from "@/components/TournamentLogoEditor";
 import AppLogo from "@/components/AppLogo";
 import AppLogoEditor from "@/components/AppLogoEditor";
+import { calculateLiveScoringStats } from "@/lib/live-scoring/stats";
 
 type BowlingMode = "NORMAL" | "DOUBLE";
 type InningsMode = 2 | 4;
@@ -2930,7 +2931,17 @@ if (needsAutomaticStrikeSwap && liveInningsId) {
         : null;
 
     const currentOverNumber = completedOvers + 1;
-    const currentOverDeliveries = liveDeliveries.filter(
+    const liveScoringStats = useMemo(
+  () =>
+    calculateLiveScoringStats(
+      liveDeliveries,
+      liveBattingPlayers,
+      liveBowlingPlayers,
+    ),
+  [liveDeliveries, liveBattingPlayers, liveBowlingPlayers],
+);
+
+const currentOverDeliveries = liveDeliveries.filter(
       (delivery) => delivery.overNumber === currentOverNumber,
     );
     const recentDeliveries = [...liveDeliveries].reverse().slice(0, 7);
@@ -2952,70 +2963,17 @@ if (needsAutomaticStrikeSwap && liveInningsId) {
         !dismissedIds.has(player.id),
     );
 
-    const battingStats = liveBattingPlayers.map((player) => {
-      const balls = liveDeliveries.filter(
-        (delivery) =>
-          delivery.strikerId === player.id &&
-          delivery.isLegal,
-      );
-      const runs = balls.reduce(
-        (sum, delivery) => sum + delivery.runsBat,
-        0,
-      );
-      const fours = balls.filter((d) => d.runsBat === 4).length;
-      const sixes = balls.filter((d) => d.runsBat === 6).length;
-      return {
-        player,
-        runs,
-        balls: balls.length,
-        fours,
-        sixes,
-        strikeRate: balls.length
-          ? ((runs / balls.length) * 100).toFixed(2)
-          : "0.00",
-        dismissed: dismissedIds.has(player.id),
-      };
-    }).filter(
-      (stat) =>
-        stat.dismissed ||
-        activeBatters.has(stat.player.id),
-    );
+    const battingStats = liveScoringStats.batting.map((player) => ({
+  ...player,
+  player: liveBattingPlayers.find((candidate) => candidate.id === player.id),
+}));
 
-    const bowlingStats = liveBowlingPlayers.map((player) => {
-      const deliveries = liveDeliveries.filter(
-        (delivery) => delivery.bowlerId === player.id,
-      );
-      const legal = deliveries.filter((d) => d.isLegal).length;
-      const overs = `${Math.floor(legal / 6)}.${legal % 6}`;
-      const runs = deliveries.reduce((sum, delivery) => {
-        const excluded =
-          delivery.extraType === "BYE" ||
-          delivery.extraType === "LEG_BYE"
-            ? delivery.runsExtra
-            : 0;
-        return sum + delivery.runsTotal - excluded;
-      }, 0);
-      const wickets = deliveries.filter(
-        (delivery) =>
-          delivery.wicket &&
-          delivery.wicket.bowlerId === player.id,
-      ).length;
-      return {
-        player,
-        deliveries: deliveries.length,
-        legal,
-        overs,
-        runs,
-        wickets,
-        economy: legal ? ((runs / legal) * 6).toFixed(2) : "0.00",
-      };
-    }).filter((stat) => stat.deliveries > 0);
+const bowlingStats = liveScoringStats.bowling.map((player) => ({
+  ...player,
+  player: liveBowlingPlayers.find((candidate) => candidate.id === player.id),
+}));
 
-    const currentBowlerStats = bowlingStats.find(
-      (stat) => stat.player.id === liveBowlerId,
-    );
-
-    const currentPartnershipDeliveries = (() => {
+const currentPartnershipDeliveries = (() => {
       let index = liveDeliveries.length - 1;
       while (index >= 0 && !liveDeliveries[index].wicket) index -= 1;
       return liveDeliveries.slice(index + 1);
