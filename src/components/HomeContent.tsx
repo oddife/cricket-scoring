@@ -150,6 +150,7 @@ const formatLabels: Record<string, string> = {
 
 const APP_NAME = "New Castle Cricket Scorer";
 const ACTIVE_MATCH_STORAGE_KEY = "new-castle-cricket-scorer-active-match";
+const ACTIVE_MATCH_RESUME_KEY = "new-castle-cricket-scorer-resume-allowed";
 
 export default function Home() {
   const [pageMode, setPageMode] =
@@ -1431,6 +1432,10 @@ const [resumingMatchId, setResumingMatchId] =
         ACTIVE_MATCH_STORAGE_KEY,
         match.id,
       );
+      window.sessionStorage.setItem(
+        ACTIVE_MATCH_RESUME_KEY,
+        "true",
+      );
       setPageMode("LIVE_SCORING");
 
       await refreshLiveInnings(currentInnings.id, match.id);
@@ -1446,27 +1451,23 @@ const [resumingMatchId, setResumingMatchId] =
     }
   }
 
-  // Keep the refresh-resume key synchronized with the current page.
-  // Only LIVE_SCORING should survive an accidental browser refresh.
-  useEffect(() => {
-    if (pageMode === "LIVE_SCORING") {
-      return;
-    }
-
-    window.sessionStorage.removeItem(
-      ACTIVE_MATCH_STORAGE_KEY,
-    );
-  }, [pageMode]);
+  // The active scorer may survive an accidental browser refresh,
+  // but only while the user is actually in LIVE_SCORING.
+  // Intentional navigation clears this state explicitly.
   // ---------------------------------------------------------
   // Restore active scorer after an accidental browser refresh
   // ---------------------------------------------------------
 
   useEffect(() => {
+    const resumeAllowed = window.sessionStorage.getItem(
+      ACTIVE_MATCH_RESUME_KEY,
+    );
+
     const savedMatchId = window.sessionStorage.getItem(
       ACTIVE_MATCH_STORAGE_KEY,
     );
 
-    if (!savedMatchId) {
+    if (resumeAllowed !== "true" || !savedMatchId) {
       return;
     }
 
@@ -1483,6 +1484,9 @@ const [resumingMatchId, setResumingMatchId] =
         if (!response.ok) {
           window.sessionStorage.removeItem(
             ACTIVE_MATCH_STORAGE_KEY,
+          );
+          window.sessionStorage.removeItem(
+            ACTIVE_MATCH_RESUME_KEY,
           );
           return;
         }
@@ -1501,6 +1505,9 @@ const [resumingMatchId, setResumingMatchId] =
         if (!hasLiveInnings) {
           window.sessionStorage.removeItem(
             ACTIVE_MATCH_STORAGE_KEY,
+          );
+          window.sessionStorage.removeItem(
+            ACTIVE_MATCH_RESUME_KEY,
           );
           return;
         }
@@ -1576,6 +1583,8 @@ const [resumingMatchId, setResumingMatchId] =
   }
 
   function goBackToTournaments() {
+    window.sessionStorage.removeItem(ACTIVE_MATCH_STORAGE_KEY);
+    window.sessionStorage.removeItem(ACTIVE_MATCH_RESUME_KEY);
     setSelectedTournament(null);
     setSelectedTeamId(null);
     setTeamPlayers([]);
@@ -1618,6 +1627,8 @@ const [resumingMatchId, setResumingMatchId] =
   }
 
   function backToDashboard() {
+    window.sessionStorage.removeItem(ACTIVE_MATCH_STORAGE_KEY);
+    window.sessionStorage.removeItem(ACTIVE_MATCH_RESUME_KEY);
     setPageMode("DASHBOARD");
     setError("");
   }
