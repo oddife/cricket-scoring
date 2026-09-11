@@ -111,23 +111,23 @@ export async function POST(
       }
     }
 
-    const finalInnings = await prisma.innings.findUnique({
-      where: { id: inningsId },
-      select: {
-        id: true,
-        status: true,
-        totalRuns: true,
-        wickets: true,
-        legalBalls: true,
-        currentStrikerId: true,
-        currentNonStrikerId: true,
-        currentBowlerAId: true,
-        currentBowlerBId: true,
-        previousOverBowlerAId: true,
-        previousOverBowlerBId: true,
-        target: true,
-      },
-    });
+    // `recordPersistentDelivery` and the target-completion update already
+    // returned the current innings state. Avoid a second identical database
+    // lookup on every ball.
+    const finalInnings = {
+      id: innings.id,
+      status: innings.status,
+      totalRuns: innings.totalRuns,
+      wickets: innings.wickets,
+      legalBalls: innings.legalBalls,
+      currentStrikerId: innings.currentStrikerId,
+      currentNonStrikerId: innings.currentNonStrikerId,
+      currentBowlerAId: innings.currentBowlerAId,
+      currentBowlerBId: innings.currentBowlerBId,
+      previousOverBowlerAId: innings.previousOverBowlerAId,
+      previousOverBowlerBId: innings.previousOverBowlerBId,
+      target: innings.target,
+    };
 
     return NextResponse.json({
       ...result,
@@ -135,8 +135,8 @@ export async function POST(
       delivery: result.delivery,
       innings: finalInnings,
       matchCompleted,
-      nextStrikerId: result.nextStrikerId ?? finalInnings?.currentStrikerId,
-      nextNonStrikerId: result.nextNonStrikerId ?? finalInnings?.currentNonStrikerId,
+      nextStrikerId: result.nextStrikerId ?? finalInnings.currentStrikerId,
+      nextNonStrikerId: result.nextNonStrikerId ?? finalInnings.currentNonStrikerId,
     });
   } catch (error) {
     console.error("POST delivery error:", error);
