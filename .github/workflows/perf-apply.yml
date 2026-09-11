@@ -1,0 +1,52 @@
+name: Apply LiveScoring Optimization
+on:
+  push:
+    branches: [performance/mobile-optimization-2026-09]
+jobs:
+  apply:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Optimize LiveScoring calculations
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          import re
+          p=Path('src/components/HomeContent.tsx')
+          s=p.read_text()
+          old_import='import { useEffect, useState } from "react";'
+          new_import='import { useEffect, useMemo, useState } from "react";'
+          if old_import not in s:
+              raise SystemExit('React import marker not found')
+          s=s.replace(old_import,new_import,1)
+          marker='import AppLogoEditor from "@/components/AppLogoEditor";'
+          if 'calculateLiveScoringStats' not in s:
+              s=s.replace(marker, marker+'\nimport { calculateLiveScoringStats } from "@/lib/live-scoring/stats";',1)
+          stats_marker='const currentOverDeliveries = liveDeliveries.filter'
+          a=s.index(stats_marker)
+          b=s.index('return (',a)
+          block=s[a:b]
+          if 'const liveScoringStats = useMemo' not in block:
+              inject='''const liveScoringStats = useMemo(\n  () =>\n    calculateLiveScoringStats(\n      liveDeliveries,\n      liveBattingPlayers,\n      liveBowlingPlayers,\n    ),\n  [liveDeliveries, liveBattingPlayers, liveBowlingPlayers],\n);\n\n'''
+              s=s[:a]+inject+s[a:]
+              a=s.index(stats_marker)
+          # Replace the two quadratic player-stat calculations with the single-pass memoized result.
+          a=s.index('const battingStats =',a)
+          b=s.index('const bowlingStats =',a)
+          s=s[:a]+'''const battingStats = liveScoringStats.batting.map((player) => ({\n  ...player,\n  player: liveBattingPlayers.find((candidate) => candidate.id === player.id),\n}));\n\n'''+s[b:]
+          a=s.index('const bowlingStats =',a)
+          b=s.index('const currentPartnershipDeliveries =',a)
+          s=s[:a]+'''const bowlingStats = liveScoringStats.bowling.map((player) => ({\n  ...player,\n  player: liveBowlingPlayers.find((candidate) => candidate.id === player.id),\n}));\n\n'''+s[b:]
+          p.write_text(s)
+          PY
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add src/components/HomeContent.tsx
+          git commit -m 'Memoize live scoring stat aggregation'
+          git push
