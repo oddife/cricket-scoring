@@ -1556,6 +1556,9 @@ const [resumingMatchId, setResumingMatchId] =
         window.sessionStorage.removeItem(
           ACTIVE_MATCH_STORAGE_KEY,
         );
+        window.sessionStorage.removeItem(
+          ACTIVE_MATCH_RESUME_KEY,
+        );
       }
     }
 
@@ -2102,6 +2105,10 @@ const [resumingMatchId, setResumingMatchId] =
       window.sessionStorage.setItem(
         ACTIVE_MATCH_STORAGE_KEY,
         createdMatchId,
+      );
+      window.sessionStorage.setItem(
+        ACTIVE_MATCH_RESUME_KEY,
+        "true",
       );
       setPageMode("LIVE_SCORING");
       void refreshLiveInnings(data.id, createdMatchId);
