@@ -25,6 +25,16 @@ export async function GET(
             inningsPerMatch: true,
             oddOvers: true,
             playersPerTeam: true,
+            innings: {
+              orderBy: { inningsNumber: "asc" },
+              select: {
+                inningsNumber: true,
+                battingTeamId: true,
+                totalRuns: true,
+                wickets: true,
+                target: true,
+              },
+            },
           },
         },
         deliveries: {
@@ -74,9 +84,13 @@ export async function GET(
       );
     }
 
+    // Keep deliveries at the top level because that is the scorer's existing
+    // response contract. This avoids serializing the large delivery array twice.
+    const { deliveries, ...inningsWithoutDeliveries } = innings;
+
     return NextResponse.json({
-      innings,
-      deliveries: innings.deliveries,
+      innings: inningsWithoutDeliveries,
+      deliveries,
     });
   } catch (error) {
     console.error("GET innings error:", error);

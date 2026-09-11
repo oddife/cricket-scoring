@@ -10,6 +10,38 @@ type RouteContext = {
   }>;
 };
 
+const inningsStateSelect = {
+  id: true,
+  status: true,
+  totalRuns: true,
+  wickets: true,
+  legalBalls: true,
+  currentStrikerId: true,
+  currentNonStrikerId: true,
+  currentBowlerAId: true,
+  currentBowlerBId: true,
+  previousOverBowlerAId: true,
+  previousOverBowlerBId: true,
+  target: true,
+  inningsNumber: true,
+  battingTeamId: true,
+  bowlingTeamId: true,
+  match: {
+    select: {
+      id: true,
+      inningsPerMatch: true,
+      innings: {
+        orderBy: { inningsNumber: "asc" as const },
+        select: {
+          inningsNumber: true,
+          battingTeamId: true,
+          totalRuns: true,
+        },
+      },
+    },
+  },
+} as const;
+
 export async function POST(
   request: Request,
   { params }: RouteContext,
@@ -45,18 +77,11 @@ export async function POST(
       fielderId: typeof body.fielderId === "string" ? body.fielderId : undefined,
     });
 
+    // Only select fields needed for target/match completion and the scorer's
+    // local state. The previous include loaded the entire Match record.
     let innings = await prisma.innings.findUniqueOrThrow({
       where: { id: inningsId },
-      include: {
-        match: {
-          include: {
-            innings: {
-              orderBy: { inningsNumber: "asc" },
-              select: { inningsNumber: true, battingTeamId: true, totalRuns: true },
-            },
-          },
-        },
-      },
+      select: inningsStateSelect,
     });
 
     // Reaching a target ends the innings immediately, even when overs remain.
@@ -64,16 +89,7 @@ export async function POST(
       innings = await prisma.innings.update({
         where: { id: inningsId },
         data: { status: "COMPLETED", completedAt: new Date() },
-        include: {
-          match: {
-            include: {
-              innings: {
-                orderBy: { inningsNumber: "asc" },
-                select: { inningsNumber: true, battingTeamId: true, totalRuns: true },
-              },
-            },
-          },
-        },
+        select: inningsStateSelect,
       });
     }
 
@@ -101,7 +117,7 @@ export async function POST(
       if (decision.completed) {
         matchCompleted = true;
         await prisma.match.update({
-          where: { id: innings.matchId },
+          where: { id: innings.match.id },
           data: {
             status: "COMPLETED",
             winnerId: decision.winnerTeamId,
@@ -111,31 +127,39 @@ export async function POST(
       }
     }
 
-    const finalInnings = await prisma.innings.findUnique({
-      where: { id: inningsId },
-      select: {
-        id: true,
-        status: true,
-        totalRuns: true,
-        wickets: true,
-        legalBalls: true,
-        currentStrikerId: true,
-        currentNonStrikerId: true,
-        currentBowlerAId: true,
-        currentBowlerBId: true,
-        previousOverBowlerAId: true,
-        previousOverBowlerBId: true,
-        target: true,
+    // Return the state already loaded above. Avoid a second database lookup
+    // and avoid serializing unrelated Match fields on every delivery.
+    const finalInnings = {
+      id: innings.id,
+      status: innings.status,
+      totalRuns: innings.totalRuns,
+      wickets: innings.wickets,
+      legalBalls: innings.legalBalls,
+      currentStrikerId: innings.currentStrikerId,
+      currentNonStrikerId: innings.currentNonStrikerId,
+      currentBowlerAId: innings.currentBowlerAId,
+      currentBowlerBId: innings.currentBowlerBId,
+      previousOverBowlerAId: innings.previousOverBowlerAId,
+      previousOverBowlerBId: innings.previousOverBowlerBId,
+      target: innings.target,
+      inningsNumber: innings.inningsNumber,
+      battingTeamId: innings.battingTeamId,
+      bowlingTeamId: innings.bowlingTeamId,
+      match: {
+        id: innings.match.id,
+        inningsPerMatch: innings.match.inningsPerMatch,
+        innings: innings.match.innings,
       },
-    });
+    };
 
     return NextResponse.json({
       ...result,
       result,
+      delivery: result.delivery,
       innings: finalInnings,
       matchCompleted,
-      nextStrikerId: result.nextStrikerId ?? finalInnings?.currentStrikerId,
-      nextNonStrikerId: result.nextNonStrikerId ?? finalInnings?.currentNonStrikerId,
+      nextStrikerId: result.nextStrikerId ?? finalInnings.currentStrikerId,
+      nextNonStrikerId: result.nextNonStrikerId ?? finalInnings.currentNonStrikerId,
     });
   } catch (error) {
     console.error("POST delivery error:", error);
