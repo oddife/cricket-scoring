@@ -2970,42 +2970,17 @@ const liveScoringStats = useMemo(
       deliveries: stat.legalBalls, legal: stat.legalBalls, overs: stat.overs, runs: stat.runs, wickets: stat.wickets, economy: stat.legalBalls ? stat.economy.toFixed(2) : "0.00",
     }));
 
-    const currentPartnershipDeliveries = (() => {
-      let index = liveDeliveries.length - 1;
-      while (index >= 0 && !liveDeliveries[index].wicket) index -= 1;
-      return liveDeliveries.slice(index + 1);
-    })();
-    const partnershipRuns = currentPartnershipDeliveries.reduce(
-      (sum, delivery) => sum + delivery.runsTotal,
-      0,
-    );
-    const partnershipBalls = currentPartnershipDeliveries.filter(
-      (delivery) => delivery.isLegal,
-    ).length;
+    const partnershipRuns = liveScoringStats.partnership.runs;
+    const partnershipBalls = liveScoringStats.partnership.balls;
 
-    const extras = liveDeliveries.reduce(
-      (acc, delivery) => {
-        acc.total += delivery.runsExtra;
-        if (delivery.extraType === "WIDE") acc.wides += delivery.runsExtra;
-        if (delivery.extraType === "NO_BALL") acc.noBalls += delivery.runsExtra;
-        if (delivery.extraType === "BYE") acc.byes += delivery.runsExtra;
-        if (delivery.extraType === "LEG_BYE") acc.legByes += delivery.runsExtra;
-        return acc;
-      },
-      { total: 0, wides: 0, noBalls: 0, byes: 0, legByes: 0 },
-    );
 
-    const fallOfWickets = liveDeliveries
-      .filter((delivery) => delivery.wicket)
-      .map((delivery) => ({
-        player: liveBattingPlayers.find(
-          (player) => player.id === delivery.wicket!.dismissedPlayerId,
-        ),
-        score: liveDeliveries
-          .filter((item) => item.createdAt <= delivery.createdAt)
-          .reduce((sum, item) => sum + item.runsTotal, 0),
-        over: `${Math.max(delivery.overNumber - 1, 0)}.${delivery.ballNumber}`,
-      }));
+    const extras = liveScoringStats.extras;
+
+    const fallOfWickets = liveScoringStats.fallOfWickets.map((wicket) => ({
+      player: liveBattingPlayers.find((player) => player.id === wicket.playerId),
+      score: wicket.runs,
+      over: `${Math.max(wicket.overNumber - 1, 0)}.${wicket.ballNumber}`,
+    }));
 
     const doubleMode = bowlingMode === "DOUBLE";
     const oddFinalOver = liveOddOvers && currentOverNumber === oversPerInnings;
