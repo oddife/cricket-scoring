@@ -2672,6 +2672,14 @@ if (needsAutomaticStrikeSwap && liveInningsId) {
           battingTeamId: data.innings.battingTeamId ?? liveBattingTeamId,
           target: data.innings.target ?? null,
         };
+        setLivePreviousBowlerAId(
+          data.innings.previousOverBowlerAId ?? livePreviousBowlerAId,
+        );
+        setLivePreviousBowlerBId(
+          data.innings.previousOverBowlerBId ?? livePreviousBowlerBId,
+        );
+        setLiveBowlerAId(data.innings.currentBowlerAId ?? liveBowlerAId);
+        setLiveBowlerBId(data.innings.currentBowlerBId ?? liveBowlerBId);
         setLiveInningsHistory((current) => [...current.filter((item) => item.inningsNumber !== historyEntry.inningsNumber), historyEntry].sort((a, b) => a.inningsNumber - b.inningsNumber));
       }
       setLiveUndoAvailable(true);
