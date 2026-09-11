@@ -11,36 +11,46 @@ jobs:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
-      - name: Apply optimization
+      - name: Finish optimization
         run: |
           python3 - <<'PY'
           from pathlib import Path
+          import re
           p = Path('src/components/HomeContent.tsx')
           s = p.read_text()
 
-          if 'useMemo' not in s.split('\n', 8)[4]:
-              s = s.replace('import { useEffect, useState } from "react";', 'import { useEffect, useMemo, useState } from "react";', 1)
+          if 'const liveScoringStats = useMemo' not in s:
+              raise SystemExit('liveScoringStats integration is missing')
 
-          if 'import { calculateLiveScoringStats }' not in s:
-              marker = 'import AppLogoEditor from "@/components/AppLogoEditor";'
-              if marker not in s:
-                  raise SystemExit('AppLogoEditor import marker not found')
-              s = s.replace(marker, marker + '\nimport { calculateLiveScoringStats } from "@/lib/live-scoring/stats";', 1)
+          s, n = re.subn(
+              r'const currentPartnershipDeliveries = \(\(\) => \{.*?const partnershipBalls = currentPartnershipDeliveries\.filter\(\n      \(delivery\) => delivery\.isLegal,\n    \)\.length;\n',
+              'const partnershipRuns = liveScoringStats.partnership.runs;\n    const partnershipBalls = liveScoringStats.partnership.balls;\n\n',
+              s,
+              count=1,
+              flags=re.S,
+          )
+          if n == 0 and 'const partnershipRuns = liveScoringStats.partnership.runs;' not in s:
+              raise SystemExit('partnership block marker not found')
 
-          start = s.index('const currentOverDeliveries = liveDeliveries.filter')
-          render_end = s.index('return (', start)
-          if 'const liveScoringStats = useMemo' not in s[start:render_end]:
-              inject = '''const liveScoringStats = useMemo(\n      () => calculateLiveScoringStats(liveDeliveries, liveBattingPlayers, liveBowlingPlayers),\n      [liveDeliveries, liveBattingPlayers, liveBowlingPlayers],\n    );\n\n    '''
-              s = s[:start] + inject + s[start:]
+          s, n = re.subn(
+              r'const extras = liveDeliveries\.reduce\(.*?\n    \);\n\n    const fallOfWickets =',
+              'const extras = liveScoringStats.extras;\n\n    const fallOfWickets =',
+              s,
+              count=1,
+              flags=re.S,
+          )
+          if n == 0 and 'const extras = liveScoringStats.extras;' not in s:
+              raise SystemExit('extras block marker not found')
 
-          start = s.index('const currentOverDeliveries = liveDeliveries.filter')
-          a = s.index('const battingStats =', start)
-          b = s.index('const bowlingStats =', a)
-          s = s[:a] + '''const battingStats = liveScoringStats.batting.map((stat) => ({\n      player: liveBattingPlayers.find((player) => player.id === stat.id)!,\n      runs: stat.runs, balls: stat.balls, fours: stat.fours, sixes: stat.sixes,\n      strikeRate: stat.balls ? ((stat.runs / stat.balls) * 100).toFixed(2) : "0.00",\n      dismissed: liveDeliveries.some((delivery) => delivery.wicket?.dismissedPlayerId === stat.id),\n    }));\n\n    ''' + s[b:]
-
-          a = s.index('const bowlingStats =', start)
-          b = s.index('const currentPartnershipDeliveries =', a)
-          s = s[:a] + '''const bowlingStats = liveScoringStats.bowling.map((stat) => ({\n      player: liveBowlingPlayers.find((player) => player.id === stat.id)!,\n      deliveries: stat.legalBalls, legal: stat.legalBalls, overs: stat.overs, runs: stat.runs, wickets: stat.wickets, economy: stat.legalBalls ? stat.economy.toFixed(2) : "0.00",\n    }));\n\n    ''' + s[b:]
+          s, n = re.subn(
+              r'const fallOfWickets = liveDeliveries\n      \.filter\(\(delivery\) => delivery\.wicket\)\n      \.map\(\(delivery\) => \(\{.*?\n      \}\)\);',
+              '''const fallOfWickets = liveScoringStats.fallOfWickets.map((wicket) => ({\n      player: liveBattingPlayers.find((player) => player.id === wicket.playerId),\n      score: wicket.runs,\n      over: `${Math.max(wicket.overNumber - 1, 0)}.${wicket.ballNumber}`,\n    }));''',
+              s,
+              count=1,
+              flags=re.S,
+          )
+          if n == 0 and 'const fallOfWickets = liveScoringStats.fallOfWickets.map' not in s:
+              raise SystemExit('fall of wickets block marker not found')
 
           p.write_text(s)
           PY
@@ -48,8 +58,8 @@ jobs:
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
           git add src/components/HomeContent.tsx
           if git diff --cached --quiet; then
-            echo 'Live scoring optimization already applied'
+            echo 'Live scoring aggregation already optimized'
           else
-            git commit -m 'Memoize live scoring calculations'
+            git commit -m 'Remove remaining live score history scans'
             git push
           fi
