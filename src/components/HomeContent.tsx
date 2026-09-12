@@ -6,6 +6,7 @@ import TournamentDashboard from "./home/TournamentDashboard";
 import MatchSetup from "./home/MatchSetup";
 import PlayerSelection from "./home/PlayerSelection";
 import OpeningPlayers from "./home/OpeningPlayers";
+import LiveScoreHeader from "./home/live-scoring/LiveScoreHeader";
 
 import { useEffect, useMemo, useState } from "react";
 import LeaguePanel from "@/components/LeaguePanel";
@@ -13,6 +14,7 @@ import TournamentLogoEditor from "@/components/TournamentLogoEditor";
 import AppLogo from "@/components/AppLogo";
 import AppLogoEditor from "@/components/AppLogoEditor";
 import { calculateLiveScoringStats } from "@/lib/live-scoring/stats";
+
 
 type BowlingMode = "NORMAL" | "DOUBLE";
 type InningsMode = 2 | 4;
@@ -3320,23 +3322,22 @@ if (needsAutomaticStrikeSwap && liveInningsId && !inningsComplete) {
               {/* Main scoring area */}
               <main className="min-w-0 space-y-3">
                 <div className="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm [color-scheme:dark]">
-                  <div className="bg-gradient-to-r from-blue-700 to-blue-600 px-5 py-5 text-white sm:px-7 [color-scheme:dark]">
-                    <div className="grid items-center gap-4 sm:grid-cols-[1fr_auto_1fr]">
-                      <div>
-                        <p className="text-xl font-bold">{battingTeam?.team.shortName ?? battingTeam?.team.name ?? "TEAM A"}</p>
-                        <p className="mt-1 text-xs font-semibold uppercase tracking-wider text-blue-100">Batting</p>
-                      </div>
-                      <div className="text-center">
-                        <div className="text-5xl font-black tracking-tight">{liveRuns} / {liveWickets}</div>
-                        <div className="mt-1 text-sm font-semibold">{overDisplay} overs</div>
-                      </div>
-                      <div className="text-left sm:text-right">
-                        <div className="text-2xl font-black">RR {runRate}</div>
-                        <div className="mt-1 text-xs text-blue-100">CRR: {runRate}</div>
-                      </div>
-                    </div>
-                  </div>
-                  <div className="grid gap-2 px-5 py-3 text-center text-xs font-semibold sm:grid-cols-4 sm:px-7">
+                  <LiveScoreHeader
+                    battingTeamName={
+                      battingTeam?.team.shortName ??
+                      battingTeam?.team.name ??
+                      "TEAM A"
+                    }
+                    liveRuns={liveRuns}
+                    liveWickets={liveWickets}
+                    overDisplay={overDisplay}
+                    runRate={runRate}
+                    projected={projected}
+                    oversRemaining={oversRemaining}
+                    liveTarget={liveTarget}
+                    runsNeeded={runsNeeded}
+                    firstInningsLeadOrDeficit={firstInningsLeadOrDeficit}
+                  />                  <div className="grid gap-2 px-5 py-3 text-center text-xs font-semibold sm:grid-cols-4 sm:px-7">
                     <div>CRR: <span className="font-bold">{runRate}</span></div>
                     <div>PROJECTED: <span className="font-bold">{projected}</span></div>
                     <div>Overs Remaining: <span className="font-bold">{oversRemaining}</span></div>
@@ -4613,6 +4614,10 @@ er-emerald-500/50 hover:bg-slate-950 [color-scheme:dark]"
     </main>
   );
 }
+
+
+
+
 
 
 
