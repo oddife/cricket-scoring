@@ -1,4 +1,6 @@
-﻿"use client";
+"use client";
+
+import { memo } from "react";
 
 type LiveScoreHeaderProps = {
   battingTeamName: string;
@@ -13,7 +15,7 @@ type LiveScoreHeaderProps = {
   firstInningsLeadOrDeficit: number | null;
 };
 
-export default function LiveScoreHeader({
+function LiveScoreHeader({
   battingTeamName,
   liveRuns,
   liveWickets,
@@ -54,15 +56,12 @@ export default function LiveScoreHeader({
         <div>
           CRR: <span className="font-bold">{runRate}</span>
         </div>
-
         <div>
           PROJECTED: <span className="font-bold">{projected}</span>
         </div>
-
         <div>
           Overs Remaining: <span className="font-bold">{oversRemaining}</span>
         </div>
-
         <div>
           {liveTarget !== null ? (
             <>
@@ -71,13 +70,8 @@ export default function LiveScoreHeader({
             </>
           ) : firstInningsLeadOrDeficit !== null ? (
             <>
-              {firstInningsLeadOrDeficit >= 0
-                ? "1ST INN LEAD"
-                : "1ST INN DEFICIT"}
-              :{" "}
-              <span className="font-black">
-                {Math.abs(firstInningsLeadOrDeficit)}
-              </span>
+              {firstInningsLeadOrDeficit >= 0 ? "1ST INN LEAD" : "1ST INN DEFICIT"}: {" "}
+              <span className="font-black">{Math.abs(firstInningsLeadOrDeficit)}</span>
             </>
           ) : (
             <>1ST INNINGS</>
@@ -88,4 +82,4 @@ export default function LiveScoreHeader({
   );
 }
 
-
+export default memo(LiveScoreHeader);
