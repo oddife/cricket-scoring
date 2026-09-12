@@ -1,7 +1,6 @@
 ﻿"use client";
 
 import CreateTournamentModal from "./home/CreateTournamentModal";
-import AddTeamModal from "./home/AddTeamModal";
 import TournamentDashboard from "./home/TournamentDashboard";
 import MatchSetup from "./home/MatchSetup";
 import PlayerSelection from "./home/PlayerSelection";
@@ -4233,25 +4232,6 @@ function Header() {
         setError={setError}
         createTournament={() => void createTournament()}
       />
-      <AddTeamModal
-        showAddTeam={showAddTeam}
-        selectedTournament={selectedTournament}
-        globalTeams={globalTeams}
-        loadingGlobalTeams={loadingGlobalTeams}
-        addTeamMode={addTeamMode}
-        selectedExistingTeamId={selectedExistingTeamId}
-        teamName={teamName}
-        teamShortName={teamShortName}
-        loadingTeamCreate={loadingTeamCreate}
-        setAddTeamMode={setAddTeamMode}
-        setSelectedExistingTeamId={setSelectedExistingTeamId}
-        setTeamName={setTeamName}
-        setTeamShortName={setTeamShortName}
-        setShowAddTeam={setShowAddTeam}
-        setError={setError}
-        addExistingTeamToTournament={addExistingTeamToTournament}
-        createTeam={createTeam}
-      />
       <ManagementModal
   selectedTeam={selectedTournament?.teams.find(
     (tournamentTeam) => tournamentTeam.team.id === selectedTeamId,
@@ -4283,6 +4263,22 @@ function Header() {
   addExistingPlayerToTeam={addExistingPlayerToTeam}
   createPlayerForTeam={createPlayerForTeam}
   updatePlayerForTeam={updatePlayerForTeam}
+  showAddTeam={showAddTeam}
+  selectedTournament={selectedTournament}
+  globalTeams={globalTeams}
+  loadingGlobalTeams={loadingGlobalTeams}
+  addTeamMode={addTeamMode}
+  selectedExistingTeamId={selectedExistingTeamId}
+  teamName={teamName}
+  teamShortName={teamShortName}
+  loadingTeamCreate={loadingTeamCreate}
+  setAddTeamMode={setAddTeamMode}
+  setSelectedExistingTeamId={setSelectedExistingTeamId}
+  setTeamName={setTeamName}
+  setTeamShortName={setTeamShortName}
+  setShowAddTeam={setShowAddTeam}
+  addExistingTeamToTournament={addExistingTeamToTournament}
+  createTeam={createTeam}
 />
 
       <MaintenanceModal

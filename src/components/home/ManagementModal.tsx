@@ -1,5 +1,7 @@
 ﻿"use client";
 
+import AddTeamModal from "./AddTeamModal"
+
 type GlobalPlayer = {
   id: string;
   name: string;
@@ -52,6 +54,23 @@ type ManagementModalProps = {
   addExistingPlayerToTeam: () => void | Promise<void>;
   createPlayerForTeam: () => void | Promise<void>;
   updatePlayerForTeam: () => void | Promise<void>;
+
+  showAddTeam: boolean;
+  selectedTournament: any;
+  globalTeams: any[];
+  loadingGlobalTeams: boolean;
+  addTeamMode: "EXISTING" | "NEW";
+  selectedExistingTeamId: string;
+  teamName: string;
+  teamShortName: string;
+  loadingTeamCreate: boolean;
+  setAddTeamMode: (value: "EXISTING" | "NEW") => void;
+  setSelectedExistingTeamId: (value: string) => void;
+  setTeamName: (value: string) => void;
+  setTeamShortName: (value: string) => void;
+  setShowAddTeam: (value: boolean) => void;
+  addExistingTeamToTournament: () => Promise<void>;
+  createTeam: () => Promise<void>;
 };
 
 export default function ManagementModal({
@@ -83,6 +102,23 @@ export default function ManagementModal({
   addExistingPlayerToTeam,
   createPlayerForTeam,
   updatePlayerForTeam,
+
+  showAddTeam,
+  selectedTournament,
+  globalTeams,
+  loadingGlobalTeams,
+  addTeamMode,
+  selectedExistingTeamId,
+  teamName,
+  teamShortName,
+  loadingTeamCreate,
+  setAddTeamMode,
+  setSelectedExistingTeamId,
+  setTeamName,
+  setTeamShortName,
+  setShowAddTeam,
+  addExistingTeamToTournament,
+  createTeam,
 }: ManagementModalProps) {
 
   const currentTeamPlayerIds = new Set(
@@ -105,6 +141,27 @@ export default function ManagementModal({
   };
 
   return (
+    <>
+      <AddTeamModal
+        showAddTeam={showAddTeam}
+        selectedTournament={selectedTournament}
+        globalTeams={globalTeams}
+        loadingGlobalTeams={loadingGlobalTeams}
+        addTeamMode={addTeamMode}
+        selectedExistingTeamId={selectedExistingTeamId}
+        teamName={teamName}
+        teamShortName={teamShortName}
+        loadingTeamCreate={loadingTeamCreate}
+        setAddTeamMode={setAddTeamMode}
+        setSelectedExistingTeamId={setSelectedExistingTeamId}
+        setTeamName={setTeamName}
+        setTeamShortName={setTeamShortName}
+        setShowAddTeam={setShowAddTeam}
+        setError={setError}
+        addExistingTeamToTournament={addExistingTeamToTournament}
+        createTeam={createTeam}
+      />
+
     <div className="fixed inset-0 z-[80] flex items-center justify-center bg-black/70 p-5 backdrop-blur-sm">
       <div className="w-full max-w-lg rounded-3xl border border-slate-700 bg-slate-900 p-6 shadow-2xl sm:p-8 [color-scheme:dark]">
         <div className="mb-6">
@@ -166,6 +223,7 @@ export default function ManagementModal({
         </div>
       </div>
     </div>
+    </>
   );
 }
 
