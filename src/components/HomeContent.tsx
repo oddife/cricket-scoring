@@ -1,5 +1,7 @@
 "use client";
 
+import CreateTournamentModal from "./home/CreateTournamentModal";
+
 import { useEffect, useMemo, useState } from "react";
 import LeaguePanel from "@/components/LeaguePanel";
 import TournamentLogoEditor from "@/components/TournamentLogoEditor";
@@ -4076,9 +4078,6 @@ er-emerald-500/50 hover:bg-slate-950 [color-scheme:dark]"
   }
 
   // ---------------------------------------------------------
-  // Create tournament modal
-  // Extracted to CreateTournamentModal.tsx
-
   // Add team modal
   // ---------------------------------------------------------
 
