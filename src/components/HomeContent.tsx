@@ -2,7 +2,6 @@
 
 import CreateTournamentModal from "./home/CreateTournamentModal";
 import AddTeamModal from "./home/AddTeamModal";
-import MaintenancePinModal from "./home/MaintenancePinModal";
 import TournamentDashboard from "./home/TournamentDashboard";
 import MatchSetup from "./home/MatchSetup";
 import PlayerSelection from "./home/PlayerSelection";
@@ -4609,20 +4608,6 @@ er-emerald-500/50 hover:bg-slate-950 [color-scheme:dark]"
         createTeam={createTeam}
       />
       {AddPlayerModal()}
-
-{maintenanceMode === "PIN" && (
-  <MaintenancePinModal
-    maintenancePin={maintenancePin}
-    maintenanceError={maintenanceError}
-    setMaintenancePin={setMaintenancePin}
-    close={() => {
-      setMaintenanceMode("CLOSED");
-      setMaintenancePin("");
-      setMaintenanceError("");
-    }}
-    verify={verifyMaintenancePin}
-  />
-)}
 
       <MaintenanceModal />
     </main>
