@@ -1,10 +1,25 @@
-"use client";
+﻿"use client";
 
-import { useEffect, useState } from "react";
+import CreateTournamentModal from "./home/CreateTournamentModal";
+import TournamentDashboard from "./home/TournamentDashboard";
+import MatchSetup from "./home/MatchSetup";
+import PlayerSelection from "./home/PlayerSelection";
+import OpeningPlayers from "./home/OpeningPlayers";
+import TournamentList from "./home/TournamentList";
+import MaintenanceModal from './home/MaintenanceModal';
+import ManagementModal from './home/ManagementModal';
+import LiveScoreHeader from "./home/live-scoring/LiveScoreHeader";
+import LiveScorecardPanel from "./home/live-scoring/LiveScorecardPanel";
+import LiveOverPanel from "./home/live-scoring/LiveOverPanel";
+import { useEffect, useMemo, useState } from "react";
 import LeaguePanel from "@/components/LeaguePanel";
-import TournamentLogoEditor from "@/components/TournamentLogoEditor";
-import AppLogo from "@/components/AppLogo";
-import AppLogoEditor from "@/components/AppLogoEditor";
+import { calculateLiveScoringStats } from "@/lib/live-scoring/stats";
+import Header from "./home/Header";
+import ErrorBanner from "./home/ErrorBanner";
+import ScorecardModal from "./home/ScorecardModal";
+import LiveBowlingPanel from "./home/live-scoring/LiveBowlingPanel";
+import LiveBattingPanel from "./home/live-scoring/LiveBattingPanel";
+
 
 type BowlingMode = "NORMAL" | "DOUBLE";
 type InningsMode = 2 | 4;
@@ -148,6 +163,8 @@ const formatLabels: Record<string, string> = {
 };
 
 const APP_NAME = "New Castle Cricket Scorer";
+const ACTIVE_MATCH_STORAGE_KEY = "new-castle-cricket-scorer-active-match";
+const ACTIVE_MATCH_RESUME_KEY = "new-castle-cricket-scorer-resume-allowed";
 
 export default function Home() {
   const [pageMode, setPageMode] =
@@ -459,14 +476,36 @@ const [resumingMatchId, setResumingMatchId] =
       setTournaments(Array.isArray(data) ? data : []);
 
       return Array.isArray(data) ? data : [];
-    } catch (err) {
+        } catch (err) {
       console.error(err);
 
-      setError(
-        "Unable to load tournaments. Make sure the server is running.",
-      );
+      const message =
+        err instanceof Error
+          ? err.message
+          : "Failed to record delivery.";
 
-      return [];
+      // The user may tap a scoring button after the final ball has
+      // already completed the innings. The backend correctly rejects
+      // that extra input, but the scorer should show the completion
+      // screen instead of displaying "Innings is not live".
+      if (message === "Innings is not live." && liveInningsId) {
+        try {
+          await refreshLiveInnings(
+            liveInningsId,
+            createdMatchId,
+          );
+
+          setError("");
+          return;
+        } catch (refreshError) {
+          console.error(
+            "Failed to refresh completed innings:",
+            refreshError,
+          );
+        }
+      }
+
+      setError(message);
     } finally {
       setLoadingTournaments(false);
     }
@@ -1425,6 +1464,14 @@ const [resumingMatchId, setResumingMatchId] =
       setLiveNeedsManualSwap(false);
       setNextOverBowlerAId("");
       setNextOverBowlerBId("");
+      window.sessionStorage.setItem(
+        ACTIVE_MATCH_STORAGE_KEY,
+        match.id,
+      );
+      window.sessionStorage.setItem(
+        ACTIVE_MATCH_RESUME_KEY,
+        "true",
+      );
       setPageMode("LIVE_SCORING");
 
       await refreshLiveInnings(currentInnings.id, match.id);
@@ -1439,6 +1486,124 @@ const [resumingMatchId, setResumingMatchId] =
       setResumingMatchId(null);
     }
   }
+
+  // The active scorer may survive an accidental browser refresh,
+  // but only while the user is actually in LIVE_SCORING.
+  // Intentional navigation clears this state explicitly.
+  // ---------------------------------------------------------
+  // Restore active scorer after an accidental browser refresh
+  // ---------------------------------------------------------
+
+  useEffect(() => {
+    const resumeAllowed = window.sessionStorage.getItem(
+      ACTIVE_MATCH_RESUME_KEY,
+    );
+
+    const savedMatchId = window.sessionStorage.getItem(
+      ACTIVE_MATCH_STORAGE_KEY,
+    );
+
+    if (resumeAllowed !== "true" || !savedMatchId) {
+      return;
+    }
+
+    const activeMatchId = savedMatchId;
+    let cancelled = false;
+
+    async function restoreActiveMatch() {
+      try {
+        const response = await fetch(
+          `/api/matches/${savedMatchId}`,
+          { cache: "no-store" },
+        );
+
+        if (!response.ok) {
+          window.sessionStorage.removeItem(
+            ACTIVE_MATCH_STORAGE_KEY,
+          );
+          window.sessionStorage.removeItem(
+            ACTIVE_MATCH_RESUME_KEY,
+          );
+          return;
+        }
+
+        const data = await response.json();
+        const match = data.match ?? data;
+        const innings = Array.isArray(match.innings)
+          ? match.innings
+          : [];
+
+        const hasLiveInnings = innings.some(
+          (item: { status?: string }) =>
+            item.status === "LIVE",
+        );
+
+        if (!hasLiveInnings) {
+          window.sessionStorage.removeItem(
+            ACTIVE_MATCH_STORAGE_KEY,
+          );
+          window.sessionStorage.removeItem(
+            ACTIVE_MATCH_RESUME_KEY,
+          );
+          return;
+        }
+
+        if (cancelled) {
+          return;
+        }
+
+        const tournamentId = match.tournamentId;
+
+        if (tournamentId) {
+          const tournamentResponse = await fetch(
+            "/api/tournaments",
+            { cache: "no-store" },
+          );
+
+          if (tournamentResponse.ok) {
+            const tournamentData =
+              await tournamentResponse.json();
+
+            if (Array.isArray(tournamentData)) {
+              setTournaments(tournamentData);
+
+              const tournament =
+                tournamentData.find(
+                  (item: Tournament) =>
+                    item.id === tournamentId,
+                );
+
+              if (tournament) {
+                setSelectedTournament(tournament);
+              }
+            }
+          }
+        }
+
+        if (!cancelled) {
+          await resumeMatch(activeMatchId);
+        }
+      } catch (err) {
+        console.error(
+          "Automatic active-match restore failed:",
+          err,
+        );
+
+        window.sessionStorage.removeItem(
+          ACTIVE_MATCH_STORAGE_KEY,
+        );
+        window.sessionStorage.removeItem(
+          ACTIVE_MATCH_RESUME_KEY,
+        );
+      }
+    }
+
+    void restoreActiveMatch();
+
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   // ---------------------------------------------------------
   // Tournament navigation
@@ -1457,6 +1622,8 @@ const [resumingMatchId, setResumingMatchId] =
   }
 
   function goBackToTournaments() {
+    window.sessionStorage.removeItem(ACTIVE_MATCH_STORAGE_KEY);
+    window.sessionStorage.removeItem(ACTIVE_MATCH_RESUME_KEY);
     setSelectedTournament(null);
     setSelectedTeamId(null);
     setTeamPlayers([]);
@@ -1499,6 +1666,8 @@ const [resumingMatchId, setResumingMatchId] =
   }
 
   function backToDashboard() {
+    window.sessionStorage.removeItem(ACTIVE_MATCH_STORAGE_KEY);
+    window.sessionStorage.removeItem(ACTIVE_MATCH_RESUME_KEY);
     setPageMode("DASHBOARD");
     setError("");
   }
@@ -1969,6 +2138,14 @@ const [resumingMatchId, setResumingMatchId] =
         bowlingMode === "DOUBLE" &&
         oversPerInnings % 2 === 1,
       );
+      window.sessionStorage.setItem(
+        ACTIVE_MATCH_STORAGE_KEY,
+        createdMatchId,
+      );
+      window.sessionStorage.setItem(
+        ACTIVE_MATCH_RESUME_KEY,
+        "true",
+      );
       setPageMode("LIVE_SCORING");
       void refreshLiveInnings(data.id, createdMatchId);
     } catch (err) {
@@ -2132,29 +2309,19 @@ const [resumingMatchId, setResumingMatchId] =
 
       setLiveDeliveries(deliveries);
 
-      if (matchId) {
-        try {
-          const matchResponse = await fetch(`/api/matches/${matchId}`, { cache: "no-store" });
-          const matchData = await matchResponse.json();
-          const matchInnings = Array.isArray(matchData?.match?.innings)
-            ? matchData.match.innings
-            : Array.isArray(matchData?.innings)
-              ? matchData.innings
-              : [];
-          if (matchInnings.length > 0) {
-            setLiveInningsHistory(
-              matchInnings.map((item: { inningsNumber: number; totalRuns: number; wickets?: number; battingTeamId: string; target?: number | null }) => ({
-                inningsNumber: Number(item.inningsNumber),
-                totalRuns: Number(item.totalRuns ?? 0),
-                wickets: Number(item.wickets ?? 0),
-                battingTeamId: item.battingTeamId,
-                target: item.target ?? null,
-              })),
-            );
-          }
-        } catch (historyError) {
-          console.error("Failed to refresh innings history:", historyError);
-        }
+      const matchInnings = Array.isArray(data.innings?.match?.innings)
+        ? data.innings.match.innings
+        : [];
+      if (matchInnings.length > 0) {
+        setLiveInningsHistory(
+          matchInnings.map((item: { inningsNumber: number; totalRuns: number; wickets?: number; battingTeamId: string; target?: number | null }) => ({
+            inningsNumber: Number(item.inningsNumber),
+            totalRuns: Number(item.totalRuns ?? 0),
+            wickets: Number(item.wickets ?? 0),
+            battingTeamId: item.battingTeamId,
+            target: item.target ?? null,
+          })),
+        );
       }
       setLiveBattingTeamId(innings.battingTeamId ?? "");
       setLiveBowlingTeamId(innings.bowlingTeamId ?? "");
@@ -2440,9 +2607,31 @@ setLiveBowlerId(refreshedCurrentBowlerId);
       const data = await response.json();
 
       if (!response.ok) {
-        throw new Error(
+        const serverError = String(
           data?.error || "Failed to record delivery.",
         );
+
+        if (
+          serverError.toLowerCase().includes("innings is not live") &&
+          liveInningsId
+        ) {
+          try {
+            await refreshLiveInnings(
+              liveInningsId,
+              createdMatchId,
+            );
+
+            setError("");
+            return;
+          } catch (refreshError) {
+            console.error(
+              "Failed to refresh completed innings:",
+              refreshError,
+            );
+          }
+        }
+
+        throw new Error(serverError);
       }
 
       const result = data.result ?? {};
@@ -2539,7 +2728,7 @@ const needsAutomaticStrikeSwap = Boolean(
 
 setLiveNeedsManualSwap(false);
 
-if (needsAutomaticStrikeSwap && liveInningsId) {
+if (needsAutomaticStrikeSwap && liveInningsId && !inningsComplete) {
   try {
     const swapResponse = await fetch(
       `/api/innings/${liveInningsId}/swap-strikers`,
@@ -2587,7 +2776,7 @@ if (needsAutomaticStrikeSwap && liveInningsId) {
         const mustSelectFreshDoublePair =
           bowlingMode === "DOUBLE" &&
           !finalOddOver &&
-          combinedLegalBallsAfterOver >= 12;
+          combinedLegalBallsAfterOver % 12 === 0;
 
         if (finalOddOver && liveBowlerId) {
           // Preserve the manually selected single bowler for an odd final over.
@@ -2930,10 +3119,23 @@ if (needsAutomaticStrikeSwap && liveInningsId) {
         : null;
 
     const currentOverNumber = completedOvers + 1;
+    const liveScoringStats = useMemo(
+  () =>
+    calculateLiveScoringStats(
+      liveDeliveries,
+      liveBattingPlayers,
+      liveBowlingPlayers,
+    ),
+  [liveDeliveries, liveBattingPlayers, liveBowlingPlayers],
+);
+
+
     const currentOverDeliveries = liveDeliveries.filter(
       (delivery) => delivery.overNumber === currentOverNumber,
     );
     const recentDeliveries = [...liveDeliveries].reverse().slice(0, 7);
+
+
 
     const dismissedIds = new Set(
       liveDeliveries
@@ -2952,105 +3154,30 @@ if (needsAutomaticStrikeSwap && liveInningsId) {
         !dismissedIds.has(player.id),
     );
 
-    const battingStats = liveBattingPlayers.map((player) => {
-      const balls = liveDeliveries.filter(
-        (delivery) =>
-          delivery.strikerId === player.id &&
-          delivery.isLegal,
-      );
-      const runs = balls.reduce(
-        (sum, delivery) => sum + delivery.runsBat,
-        0,
-      );
-      const fours = balls.filter((d) => d.runsBat === 4).length;
-      const sixes = balls.filter((d) => d.runsBat === 6).length;
-      return {
-        player,
-        runs,
-        balls: balls.length,
-        fours,
-        sixes,
-        strikeRate: balls.length
-          ? ((runs / balls.length) * 100).toFixed(2)
-          : "0.00",
-        dismissed: dismissedIds.has(player.id),
-      };
-    }).filter(
-      (stat) =>
-        stat.dismissed ||
-        activeBatters.has(stat.player.id),
-    );
 
-    const bowlingStats = liveBowlingPlayers.map((player) => {
-      const deliveries = liveDeliveries.filter(
-        (delivery) => delivery.bowlerId === player.id,
-      );
-      const legal = deliveries.filter((d) => d.isLegal).length;
-      const overs = `${Math.floor(legal / 6)}.${legal % 6}`;
-      const runs = deliveries.reduce((sum, delivery) => {
-        const excluded =
-          delivery.extraType === "BYE" ||
-          delivery.extraType === "LEG_BYE"
-            ? delivery.runsExtra
-            : 0;
-        return sum + delivery.runsTotal - excluded;
-      }, 0);
-      const wickets = deliveries.filter(
-        (delivery) =>
-          delivery.wicket &&
-          delivery.wicket.bowlerId === player.id,
-      ).length;
-      return {
-        player,
-        deliveries: deliveries.length,
-        legal,
-        overs,
-        runs,
-        wickets,
-        economy: legal ? ((runs / legal) * 6).toFixed(2) : "0.00",
-      };
-    }).filter((stat) => stat.deliveries > 0);
+    const battingStats = liveScoringStats.batting.map((stat) => ({
+      player: liveBattingPlayers.find((player) => player.id === stat.id)!,
+      runs: stat.runs, balls: stat.balls, fours: stat.fours, sixes: stat.sixes,
+      strikeRate: stat.balls ? ((stat.runs / stat.balls) * 100).toFixed(2) : "0.00",
+      dismissed: dismissedIds.has(stat.id),
+    }));
 
-    const currentBowlerStats = bowlingStats.find(
-      (stat) => stat.player.id === liveBowlerId,
-    );
+    const bowlingStats = liveScoringStats.bowling.map((stat) => ({
+      player: liveBowlingPlayers.find((player) => player.id === stat.id)!,
+      deliveries: stat.legalBalls, legal: stat.legalBalls, overs: stat.overs, runs: stat.runs, wickets: stat.wickets, economy: stat.legalBalls ? stat.economy.toFixed(2) : "0.00",
+    }));
 
-    const currentPartnershipDeliveries = (() => {
-      let index = liveDeliveries.length - 1;
-      while (index >= 0 && !liveDeliveries[index].wicket) index -= 1;
-      return liveDeliveries.slice(index + 1);
-    })();
-    const partnershipRuns = currentPartnershipDeliveries.reduce(
-      (sum, delivery) => sum + delivery.runsTotal,
-      0,
-    );
-    const partnershipBalls = currentPartnershipDeliveries.filter(
-      (delivery) => delivery.isLegal,
-    ).length;
+    const partnershipRuns = liveScoringStats.partnership.runs;
+    const partnershipBalls = liveScoringStats.partnership.balls;
 
-    const extras = liveDeliveries.reduce(
-      (acc, delivery) => {
-        acc.total += delivery.runsExtra;
-        if (delivery.extraType === "WIDE") acc.wides += delivery.runsExtra;
-        if (delivery.extraType === "NO_BALL") acc.noBalls += delivery.runsExtra;
-        if (delivery.extraType === "BYE") acc.byes += delivery.runsExtra;
-        if (delivery.extraType === "LEG_BYE") acc.legByes += delivery.runsExtra;
-        return acc;
-      },
-      { total: 0, wides: 0, noBalls: 0, byes: 0, legByes: 0 },
-    );
 
-    const fallOfWickets = liveDeliveries
-      .filter((delivery) => delivery.wicket)
-      .map((delivery) => ({
-        player: liveBattingPlayers.find(
-          (player) => player.id === delivery.wicket!.dismissedPlayerId,
-        ),
-        score: liveDeliveries
-          .filter((item) => item.createdAt <= delivery.createdAt)
-          .reduce((sum, item) => sum + item.runsTotal, 0),
-        over: `${Math.max(delivery.overNumber - 1, 0)}.${delivery.ballNumber}`,
-      }));
+    const extras = liveScoringStats.extras;
+
+    const fallOfWickets = liveScoringStats.fallOfWickets.map((wicket) => ({
+      player: liveBattingPlayers.find((player) => player.id === wicket.playerId),
+      score: wicket.runs,
+      over: `${Math.max(wicket.overNumber - 1, 0)}.${wicket.ballNumber}`,
+    }));
 
     const doubleMode = bowlingMode === "DOUBLE";
     const oddFinalOver = liveOddOvers && currentOverNumber === oversPerInnings;
@@ -3221,11 +3348,11 @@ if (needsAutomaticStrikeSwap && liveInningsId) {
                   <div className="grid grid-cols-[minmax(42px,auto)_minmax(0,1fr)_auto_minmax(0,1fr)_minmax(42px,auto)] items-center gap-1 px-1 text-sm">
                     <span className="truncate font-black text-blue-700">{selectedTournament?.teams.find((item) => item.team.id === teamAId)?.team.shortName ?? "T1"}</span>
                     <div className={`grid min-w-0 ${inningsPerMatch === 4 ? "grid-cols-2" : "grid-cols-1"}`}>
-                      {[1, ...(inningsPerMatch === 4 ? [3] : [])].map((inningNumber) => { const history = liveInningsHistory.find((item) => item.inningsNumber === inningNumber); const isCurrent = liveInningsNumber === inningNumber && liveBattingTeamId === teamAId; const value = isCurrent ? `${liveRuns}/${liveWickets}` : history?.battingTeamId === teamAId ? `${history.totalRuns}/${history.wickets ?? 0}` : "-/-"; return <div key={`live-a-${inningNumber}`} className="text-center"><div className="whitespace-nowrap font-black text-slate-900">{value}</div><div className="text-[10px] font-medium text-slate-400">({inningNumber === 1 ? 1 : 2})</div></div>; })}
+                      {[1, ...(inningsPerMatch === 4 ? [3] : [])].map((inningNumber) => { const history = liveInningsHistory.find((item) => item.inningsNumber === inningNumber); const isCurrent = liveInningsNumber === inningNumber && liveBattingTeamId === teamAId; const value = isCurrent ? `${liveRuns}/${liveWickets}` : history ? `${history.totalRuns}/${history.wickets ?? 0}` : "-/-"; return <div key={`live-a-${inningNumber}`} className="text-center"><div className="whitespace-nowrap font-black text-slate-900">{value}</div><div className="text-[10px] font-medium text-slate-400">({inningNumber === 1 ? 1 : 2})</div></div>; })}
                     </div>
                     <span className="px-1 text-xs font-black text-slate-400">VS</span>
                     <div className={`grid min-w-0 ${inningsPerMatch === 4 ? "grid-cols-2" : "grid-cols-1"}`}>
-                      {[2, ...(inningsPerMatch === 4 ? [4] : [])].map((inningNumber) => { const history = liveInningsHistory.find((item) => item.inningsNumber === inningNumber); const isCurrent = liveInningsNumber === inningNumber && liveBattingTeamId === teamBId; const value = isCurrent ? `${liveRuns}/${liveWickets}` : history?.battingTeamId === teamBId ? `${history.totalRuns}/${history.wickets ?? 0}` : "-/-"; return <div key={`live-b-${inningNumber}`} className="text-center"><div className="whitespace-nowrap font-black text-slate-900">{value}</div><div className="text-[10px] font-medium text-slate-400">({inningNumber === 2 ? 1 : 2})</div></div>; })}
+                      {[2, ...(inningsPerMatch === 4 ? [4] : [])].map((inningNumber) => { const history = liveInningsHistory.find((item) => item.inningsNumber === inningNumber); const isCurrent = liveInningsNumber === inningNumber && liveBattingTeamId === teamBId; const value = isCurrent ? `${liveRuns}/${liveWickets}` : history ? `${history.totalRuns}/${history.wickets ?? 0}` : "-/-"; return <div key={`live-b-${inningNumber}`} className="text-center"><div className="whitespace-nowrap font-black text-slate-900">{value}</div><div className="text-[10px] font-medium text-slate-400">({inningNumber === 2 ? 1 : 2})</div></div>; })}
                     </div>
                     <span className="truncate text-right font-black text-emerald-700">{selectedTournament?.teams.find((item) => item.team.id === teamBId)?.team.shortName ?? "T2"}</span>
                   </div>
@@ -3247,23 +3374,22 @@ if (needsAutomaticStrikeSwap && liveInningsId) {
               {/* Main scoring area */}
               <main className="min-w-0 space-y-3">
                 <div className="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm [color-scheme:dark]">
-                  <div className="bg-gradient-to-r from-blue-700 to-blue-600 px-5 py-5 text-white sm:px-7 [color-scheme:dark]">
-                    <div className="grid items-center gap-4 sm:grid-cols-[1fr_auto_1fr]">
-                      <div>
-                        <p className="text-xl font-bold">{battingTeam?.team.shortName ?? battingTeam?.team.name ?? "TEAM A"}</p>
-                        <p className="mt-1 text-xs font-semibold uppercase tracking-wider text-blue-100">Batting</p>
-                      </div>
-                      <div className="text-center">
-                        <div className="text-5xl font-black tracking-tight">{liveRuns} / {liveWickets}</div>
-                        <div className="mt-1 text-sm font-semibold">{overDisplay} overs</div>
-                      </div>
-                      <div className="text-left sm:text-right">
-                        <div className="text-2xl font-black">RR {runRate}</div>
-                        <div className="mt-1 text-xs text-blue-100">CRR: {runRate}</div>
-                      </div>
-                    </div>
-                  </div>
-                  <div className="grid gap-2 px-5 py-3 text-center text-xs font-semibold sm:grid-cols-4 sm:px-7">
+                  <LiveScoreHeader
+                    battingTeamName={
+                      battingTeam?.team.shortName ??
+                      battingTeam?.team.name ??
+                      "TEAM A"
+                    }
+                    liveRuns={liveRuns}
+                    liveWickets={liveWickets}
+                    overDisplay={overDisplay}
+                    runRate={runRate}
+                    projected={projected}
+                    oversRemaining={oversRemaining}
+                    liveTarget={liveTarget}
+                    runsNeeded={runsNeeded}
+                    firstInningsLeadOrDeficit={firstInningsLeadOrDeficit}
+                  />                  <div className="grid gap-2 px-5 py-3 text-center text-xs font-semibold sm:grid-cols-4 sm:px-7">
                     <div>CRR: <span className="font-bold">{runRate}</span></div>
                     <div>PROJECTED: <span className="font-bold">{projected}</span></div>
                     <div>Overs Remaining: <span className="font-bold">{oversRemaining}</span></div>
@@ -3279,79 +3405,32 @@ if (needsAutomaticStrikeSwap && liveInningsId) {
                   </div>
                 </div>
 
-                {/* Batting + bowling scorecard */}
-                <div id="live-scorecard" className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm [color-scheme:dark]">
-                  <div className="grid gap-5 lg:grid-cols-[1.15fr_0.85fr]">
-                    <div>
-                      <div className="mb-3 grid grid-cols-[1fr_50px_50px_45px_45px_65px] gap-2 border-b border-slate-200 pb-2 text-xs font-bold uppercase text-slate-500 [color-scheme:dark]">
-                        <span>Batsmen</span><span>R</span><span>B</span><span>4s</span><span>6s</span><span>SR</span>
-                      </div>
-                      <div className="space-y-2">
-                        {battingStats.map((stat) => (
-                          <div key={stat.player.id} className={`grid grid-cols-[1fr_50px_50px_45px_45px_65px] items-center gap-2 rounded-lg px-2 py-2 text-sm ${stat.player.id === liveStrikerId ? "bg-emerald-50" : ""}`}>
-                            <div className="flex min-w-0 items-center gap-2">
-                              <span className={`flex h-7 w-7 shrink-0 items-center justify-center rounded-full text-xs font-bold text-white [color-scheme:dark] ${stat.dismissed ? "bg-red-600" : "bg-emerald-600"}`}>{stat.player.jerseyNumber ?? ""}</span>
-                              <div className="min-w-0">
-                                <span className="block truncate font-bold">{stat.player.name}{stat.player.id === liveStrikerId ? " *" : ""}</span>
-                                <span className="block truncate whitespace-pre text-[9px] text-slate-400">{stat.dismissed ? liveDismissalText(stat.player.id) : "NOT OUT"}</span>
-                              </div>
-                            </div>
-                            <b>{stat.runs}</b><span>{stat.balls}</span><span>{stat.fours}</span><span>{stat.sixes}</span><span>{stat.strikeRate}</span>
-                          </div>
-                        ))}
-                      </div>
-                    </div>
-
-                    <div>
-                      <div className="mb-3 grid grid-cols-[1fr_45px_45px_45px_45px_55px] gap-1 border-b border-slate-200 pb-2 text-xs font-bold uppercase text-slate-500 [color-scheme:dark]">
-                        <span>Bowler</span><span>O</span><span>M</span><span>R</span><span>W</span><span>ECON</span>
-                      </div>
-                      <div className="space-y-2">
-                        {bowlingStats.map((stat) => (
-                          <div key={stat.player.id} className={`grid grid-cols-[1fr_45px_45px_45px_45px_55px] items-center gap-1 rounded-lg px-2 py-2 text-sm ${stat.player.id === liveBowlerId ? "bg-blue-50" : ""}`}>
-                            <div className="truncate font-bold">{stat.player.name}</div>
-                            <span>{stat.overs}</span><span>0</span><span>{stat.runs}</span><span>{stat.wickets}</span><span>{stat.economy}</span>
-                          </div>
-                        ))}
-                      </div>
-                    </div>
-                  </div>
-
-                  <div className="mt-4 grid gap-4 border-t border-slate-200 pt-4 sm:grid-cols-3 [color-scheme:dark]">
-                    <div><p className="text-xs font-bold uppercase text-slate-500">Extras</p><p className="mt-1 text-sm font-semibold">{extras.total} (W {extras.wides}, NB {extras.noBalls}, B {extras.byes}, LB {extras.legByes})</p></div>
-                    <div><p className="text-xs font-bold uppercase text-slate-500">Total</p><p className="mt-1 text-lg font-black">{liveRuns} / {liveWickets} <span className="text-xs font-medium">({overDisplay} overs)</span></p></div>
-                    <div id="live-partnership"><p className="text-xs font-bold uppercase text-slate-500">Partnership</p><p className="mt-1 text-sm font-semibold">{partnershipRuns} runs off {partnershipBalls} balls</p></div>
-                  </div>
-                </div>
-
-                {/* Current over */}
-                <div id="live-overs" className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm [color-scheme:dark]">
-                  <div className="flex flex-wrap items-center justify-between gap-3">
-                    <div>
-                      <p className="text-xs font-bold uppercase tracking-wide text-slate-500">Current Over</p>
-                      <p className="mt-1 text-lg font-black">Over {currentOverNumber}</p>
-                    </div>
-                    <div className={`rounded-lg px-3 py-2 text-xs font-bold ${doubleMode ? "bg-blue-50 text-blue-700" : "bg-slate-100 text-slate-700"}`}>
-                      {doubleMode ? "DOUBLE BOWLER" : "NORMAL BOWLING"}
-                    </div>
-                    {oddFinalOver && <div className="rounded-lg bg-amber-100 px-3 py-2 text-xs font-bold text-amber-800">ODD FINAL OVER - ONE BOWLER</div>}
-                  </div>
-                  <div className="mt-3 flex flex-wrap gap-2">
-                    {currentOverDeliveries.map((delivery) => (
-                      <div key={delivery.id} className={`flex h-9 min-w-9 items-center justify-center rounded-full px-2 text-xs font-bold ${delivery.isWicket ? "bg-red-500 text-white" : delivery.runsTotal === 4 || delivery.runsTotal === 6 ? "bg-blue-100 text-blue-700" : "bg-slate-100 text-slate-800"}`} title={delivery.bowler.name}>
-                        {deliveryLabel(delivery)}
-                      </div>
-                    ))}
-                    {currentOverDeliveries.length === 0 && <span className="text-sm text-slate-400">No deliveries yet</span>}
-                  </div>
-                  {doubleMode && !oddFinalOver && (
-                    <div className="mt-3 grid grid-cols-2 gap-3 text-xs">
-                      <div className={`rounded-lg px-3 py-2 ${liveBowlerId === liveBowlerAId ? "bg-emerald-50 text-emerald-700" : "bg-slate-50 text-slate-600"}`}><b>{activeBowlerA?.name ?? "Bowler A"}</b><span className="float-right">{bowlerBallsThisOver(liveBowlerAId)} balls</span></div>
-                      <div className={`rounded-lg px-3 py-2 ${liveBowlerId === liveBowlerBId ? "bg-emerald-50 text-emerald-700" : "bg-slate-50 text-slate-600"}`}><b>{activeBowlerB?.name ?? "Bowler B"}</b><span className="float-right">{bowlerBallsThisOver(liveBowlerBId)} balls</span></div>
-                    </div>
-                  )}
-                </div>
-
+                <LiveScorecardPanel
+                  battingStats={battingStats}
+                  bowlingStats={bowlingStats}
+                  liveStrikerId={liveStrikerId}
+                  liveBowlerId={liveBowlerId}
+                  liveDismissalText={liveDismissalText}
+                  extras={extras}
+                  liveRuns={liveRuns}
+                  liveWickets={liveWickets}
+                  overDisplay={overDisplay}
+                  partnershipRuns={partnershipRuns}
+                  partnershipBalls={partnershipBalls}
+                />
+                <LiveOverPanel
+                  doubleMode={doubleMode}
+                  oddFinalOver={oddFinalOver}
+                  currentOverNumber={currentOverNumber}
+                  currentOverDeliveries={currentOverDeliveries}
+                  deliveryLabel={deliveryLabel}
+                  liveBowlerId={liveBowlerId}
+                  liveBowlerAId={liveBowlerAId}
+                  liveBowlerBId={liveBowlerBId}
+                  activeBowlerA={activeBowlerA}
+                  activeBowlerB={activeBowlerB}
+                  bowlerBallsThisOver={bowlerBallsThisOver}
+                />
                 <div className={`rounded-xl border p-3 shadow-sm transition-all [color-scheme:dark] ${liveNeedsManualSwap ? "border-amber-300 bg-amber-50 ring-2 ring-amber-200/80" : "border-slate-200 bg-white"}`}>
                   <div className="flex flex-wrap items-center gap-2">
                     <button type="button" onClick={() => void performUndo()} disabled={liveLoading || !liveUndoAvailable} className="h-11 rounded-lg border border-slate-300 bg-slate-100 px-4 font-bold text-slate-800 disabled:cursor-not-allowed disabled:opacity-40">Undo</button>
@@ -3362,7 +3441,7 @@ if (needsAutomaticStrikeSwap && liveInningsId) {
         : "border border-slate-300 bg-slate-100 text-slate-800 hover:bg-slate-200"
   }`}
 >
-  {liveAutoSwapNotice ? "Auto-swapped ✓" : "Swap Batsmen"}
+  {liveAutoSwapNotice ? "Auto-swapped ÃƒÂ¢Ã…â€œÃ¢â‚¬Å“" : "Swap Batsmen"}
 </button>
                     <button type="button" onClick={() => { setManualStrikerId(liveStrikerId); setManualNonStrikerId(liveNonStrikerId); setManualActionMenu("BATSMAN"); }} disabled={liveLoading || liveInningsComplete} className="h-11 rounded-lg border border-slate-300 bg-slate-100 px-4 font-bold text-slate-800 disabled:opacity-40">Change Batsman</button>
                     <button type="button" onClick={() => { setManualBowlerAId(liveBowlerAId || liveBowlerId); setManualBowlerBId(liveBowlerBId); setManualActionMenu("BOWLER"); }} disabled={liveLoading || liveInningsComplete} className="h-11 rounded-lg border border-slate-300 bg-slate-100 px-4 font-bold text-slate-800 disabled:opacity-40">Change Bowler</button>
@@ -3405,64 +3484,119 @@ if (needsAutomaticStrikeSwap && liveInningsId) {
                   </div>
                 </div>
 
-                {/* Now batting */}
-                <div id="live-players" className="grid gap-3 md:grid-cols-2">
-                  {[liveStriker, liveNonStriker].map((player, index) => {
-                    if (!player) return null;
-                    const stat = battingStats.find((item) => item.player.id === player.id);
-                    return <div key={player.id} className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm [color-scheme:dark]"><p className="text-xs font-bold uppercase text-slate-500">{index === 0 ? "Now Batting - Striker" : "Now Batting - Non-Striker"}</p><div className="mt-2 flex items-center justify-between gap-3"><div className="min-w-0"><p className="truncate text-lg font-black">{player.name}</p><p className="text-xs text-slate-500">{stat?.runs ?? 0}* ({stat?.balls ?? 0})</p></div><div className="text-right text-xs font-semibold text-slate-500">{stat?.fours ?? 0} Fours  -  {stat?.sixes ?? 0} Sixes</div></div></div>;
-                  })}
-                </div>
               </main>
 
               {/* Right rail */}
               <aside className="space-y-3">
-                <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm [color-scheme:dark]">
-                  <p className="text-xs font-bold uppercase tracking-wide text-slate-600">Over View</p>
-                  <div className="mt-2 text-center text-4xl font-black">{completedOvers}</div>
-                  <div className="text-center text-sm text-slate-500">{overDisplay} overs</div>
-                  <div className="my-4 border-t border-slate-200" />
-                  <p className="text-xs font-bold uppercase tracking-wide text-slate-600">Bowlers This Over</p>
-                  <div className="mt-3 space-y-2">
-                    {[activeBowlerA, activeBowlerB].filter(Boolean).map((player, index) => <div key={player!.id} className="flex items-center justify-between text-sm"><span className="font-bold">{index === 0 ? "B1" : "B2"} &nbsp; {player!.name}</span><b>{bowlerBallsThisOver(player!.id)} balls</b></div>)}
-                  </div>
-                  <div className="my-4 border-t border-slate-200" />
-                  <p className="text-xs font-bold uppercase tracking-wide text-slate-600">Next Bowler</p>
-                  <p className="mt-2 text-sm font-bold">{liveBowler?.name ?? "Select next bowler"}</p>
-                </div>
+              <LiveBowlingPanel
+  activeBowlerA={activeBowlerA}
+  activeBowlerB={activeBowlerB}
+  liveBowler={liveBowler}
+  doubleMode={doubleMode}
+  oddFinalOver={oddFinalOver}
+  completedOvers={completedOvers}
+  overDisplay={overDisplay}
+  liveBowlerId={liveBowlerId}
+  liveInningsComplete={liveInningsComplete}
+  liveLegalBalls={liveLegalBalls}
+  liveCurrentOver={liveCurrentOver}
+  oversPerInnings={oversPerInnings}
+  liveBowlingPlayers={liveBowlingPlayers}
+  nextOverBowlerAId={nextOverBowlerAId}
+  nextOverBowlerBId={nextOverBowlerBId}
+  bowlerBallsThisOver={bowlerBallsThisOver}
+  bowlerDisabledForNextOver={bowlerDisabledForNextOver}
+  setNextOverBowlerAId={setNextOverBowlerAId}
+  setNextOverBowlerBId={setNextOverBowlerBId}
+  selectNextOverBowlers={selectNextOverBowlers}
+/>
 
-                <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm [color-scheme:dark]">
-                  <p className="text-xs font-bold uppercase tracking-wide text-slate-600">Recent Deliveries</p>
-                  <div className="mt-3 space-y-2">
-                    {recentDeliveries.map((delivery) => <div key={delivery.id} className="grid grid-cols-[45px_38px_1fr_30px] items-center gap-2 text-xs"><span className="text-slate-500">{delivery.overNumber}.{delivery.ballNumber}</span><span className={`flex h-7 w-7 items-center justify-center rounded-full font-bold ${delivery.isWicket ? "bg-red-500 text-white" : delivery.runsTotal === 4 || delivery.runsTotal === 6 ? "bg-blue-100 text-blue-700" : "bg-slate-100"}`}>{deliveryLabel(delivery)}</span><span className="truncate">{delivery.isWicket ? "Wicket" : delivery.runsTotal === 0 ? "Dot ball" : `${delivery.runsTotal} run${delivery.runsTotal === 1 ? "" : "s"}`}</span><span className="font-bold text-slate-500">{doubleMode ? (delivery.bowlerId === liveBowlerAId ? "B1" : "B2") : ""}</span></div>)}
-                    {recentDeliveries.length === 0 && <p className="text-sm text-slate-400">No deliveries yet.</p>}
-                  </div>
-                </div>
+<div className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm [color-scheme:dark]">
+  <p className="text-xs font-bold uppercase tracking-wide text-slate-600">
+    Recent Deliveries
+  </p>
+  <div className="mt-3 space-y-2">
+    {recentDeliveries.map((delivery) => (
+      <div
+        key={delivery.id}
+        className="grid grid-cols-[45px_38px_1fr_30px] items-center gap-2 text-xs"
+      >
+        <span className="text-slate-500">
+          {delivery.overNumber}.{delivery.ballNumber}
+        </span>
 
-                <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm [color-scheme:dark]">
-                  <p className="text-xs font-bold uppercase tracking-wide text-slate-600">Next Batsman</p>
-                  {nextBatsmen[0] ? <div className="mt-3 flex items-center gap-3"><span className="flex h-9 w-9 items-center justify-center rounded-full bg-emerald-600 text-xs font-bold text-white [color-scheme:dark]">{nextBatsmen[0].jerseyNumber ?? ""}</span><div><p className="font-bold">{nextBatsmen[0].name}</p><p className="text-xs text-slate-500">{nextBatsmen[0].battingStyle ?? "Batting"}</p></div></div> : <p className="mt-2 text-sm text-slate-400">No eligible batsman available.</p>}
-                </div>
+        <span
+          className={`flex h-7 w-7 items-center justify-center rounded-full font-bold ${
+            delivery.isWicket
+              ? "bg-red-500 text-white"
+              : delivery.runsTotal === 4 || delivery.runsTotal === 6
+                ? "bg-blue-100 text-blue-700"
+                : "bg-slate-100"
+          }`}
+        >
+          {deliveryLabel(delivery)}
+        </span>
 
-                <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm [color-scheme:dark]">
-                  <p className="text-xs font-bold uppercase tracking-wide text-slate-600">Fall of Wickets</p>
-                  <div className="mt-3 grid grid-cols-2 gap-3">
-                    {fallOfWickets.map((fall, index) => <div key={`${fall.player?.id ?? index}-${fall.over}`} className="border-r border-slate-200 pr-2 last:border-0 [color-scheme:dark]"><p className="font-bold">{index + 1}-{fall.score}</p><p className="truncate text-xs text-slate-500">{fall.player?.name ?? "Player"}</p><p className="text-xs text-slate-400">{fall.over} overs</p></div>)}
-                    {fallOfWickets.length === 0 && <p className="col-span-2 text-sm text-slate-400">No wickets.</p>}
-                  </div>
-                </div>
+        <span className="truncate">
+          {delivery.isWicket
+            ? "Wicket"
+            : delivery.runsTotal === 0
+              ? "Dot ball"
+              : `${delivery.runsTotal} run${delivery.runsTotal === 1 ? "" : "s"}`}
+        </span>
 
-                {liveBowlerId === "" && !liveInningsComplete && (
-                  <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm [color-scheme:dark]">
-                    <p className="text-xs font-bold uppercase tracking-wide text-slate-600">Select Next Over</p>
-                    <select value={nextOverBowlerAId} onChange={(event) => setNextOverBowlerAId(event.target.value)} className="mt-3 h-11 w-full rounded-lg border border-slate-700 bg-slate-950 px-3 text-white [color-scheme:dark] [color-scheme:dark]">
-                      <option value="">Select bowler</option>
-                      {liveBowlingPlayers.map((player) => <option key={player.id} value={player.id} disabled={bowlerDisabledForNextOver(player.id)}>{player.name}{bowlerDisabledForNextOver(player.id) ? " (cannot bowl consecutive over)" : ""}</option>)}
-                    </select>
-                    {doubleMode && !oddFinalOver && <select value={nextOverBowlerBId} onChange={(event) => setNextOverBowlerBId(event.target.value)} className="mt-2 h-11 w-full rounded-lg border border-slate-700 bg-slate-950 px-3 text-white [color-scheme:dark] [color-scheme:dark]"><option value="">Select second bowler</option>{liveBowlingPlayers.map((player) => <option key={player.id} value={player.id} disabled={player.id === nextOverBowlerAId || bowlerDisabledForNextOver(player.id)}>{player.name}</option>)}</select>}
-                    <button type="button" onClick={selectNextOverBowlers} className="mt-3 h-11 w-full rounded-lg bg-blue-600 font-bold text-white hover:bg-blue-700 [color-scheme:dark]">{oddFinalOver ? "Start Final Over" : "Start Next Over"}</button>
-                  </div>
-                )}
+        <span className="font-bold text-slate-500">
+          {doubleMode
+            ? delivery.bowlerId === liveBowlerAId
+              ? "B1"
+              : "B2"
+            : ""}
+        </span>
+      </div>
+    ))}
+
+    {recentDeliveries.length === 0 && (
+      <p className="text-sm text-slate-400">No deliveries yet.</p>
+    )}
+  </div>
+</div>
+
+<LiveBattingPanel
+  liveStriker={liveStriker}
+  liveNonStriker={liveNonStriker}
+  battingStats={battingStats}
+  nextBatsmen={nextBatsmen}
+/>
+
+<div className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm [color-scheme:dark]">
+  <p className="text-xs font-bold uppercase tracking-wide text-slate-600">
+    Fall of Wickets
+  </p>
+  <div className="mt-3 grid grid-cols-2 gap-3">
+    {fallOfWickets.map((fall, index) => (
+      <div
+        key={`${fall.player?.id ?? index}-${fall.over}`}
+        className="border-r border-slate-200 pr-2 last:border-0 [color-scheme:dark]"
+      >
+        <p className="font-bold">
+          {index + 1}-{fall.score}
+        </p>
+        <p className="truncate text-xs text-slate-500">
+          {fall.player?.name ?? "Player"}
+        </p>
+        <p className="text-xs text-slate-400">
+          {fall.over} overs
+        </p>
+      </div>
+    ))}
+
+    {fallOfWickets.length === 0 && (
+      <p className="col-span-2 text-sm text-slate-400">
+        No wickets.
+      </p>
+    )}
+  </div>
+</div>
               </aside>
             </div>
 
@@ -3645,7 +3779,7 @@ if (needsAutomaticStrikeSwap && liveInningsId) {
           </select>
         </div>
       ) : (
-        <div className="rounded-lg border border-red-300 bg-red-50 px-4 py-3 text-sm font-black text-red-700">ALL OUT — no replacement batsman available.</div>
+        <div className="rounded-lg border border-red-300 bg-red-50 px-4 py-3 text-sm font-black text-red-700">ALL OUT ÃƒÂ¢Ã¢â€šÂ¬Ã¢â‚¬Â no replacement batsman available.</div>
       )}
               </div>
               <div className="mt-6 grid grid-cols-2 gap-3"><button type="button" onClick={() => { setShowWicketPanel(false); setPendingWicketExtraType(null); setPendingWicketExtraRuns(0); setReplacementPlayerId(""); setFielderId(""); }} className="h-12 rounded-lg border border-slate-300 font-semibold [color-scheme:dark]">Cancel</button><button type="button" disabled={(nextBatsmen.length > 0 && !replacementPlayerId) || liveLoading || ((wicketType === "CAUGHT" || wicketType === "RUN_OUT" || wicketType === "STUMPED") && !fielderId)} onClick={() => void recordLiveDelivery({ isWicket: true, wicketType, dismissedPlayerId, replacementPlayerId, ...(fielderId ? { fielderId } : {}), ...(pendingWicketExtraType ? { runsExtra: pendingWicketExtraRuns, extraType: pendingWicketExtraType } : {}) })} className="h-12 rounded-lg bg-red-500 font-bold text-white disabled:opacity-40 [color-scheme:dark]">Confirm Wicket</button></div>
@@ -3718,2500 +3852,6 @@ if (needsAutomaticStrikeSwap && liveInningsId) {
   }
 
   // ---------------------------------------------------------
-  // Header
-  // ---------------------------------------------------------
-function Header() {
-  if (pageMode === "LIVE_SCORING") {
-    return (
- <header className="mb-0">
-  <div className="flex h-16 items-center justify-between gap-4 rounded-xl border border-slate-700 bg-[#07182d] px-4 text-white shadow-sm sm:px-6">
-        <button
-            type="button"
-            onClick={goBackToTournaments}
-            aria-label={`${APP_NAME} - Back to tournaments`}
-          className="flex min-w-0 items-center gap-3 rounded-lg px-2 py-1 transition hover:bg-white/10 hover:ring-1 hover:ring-white/10 active:scale-[0.99]" 
-          >
-            <span className="flex h-10 w-10 shrink-0 items-center justify-center overflow-hidden rounded-full bg-white shadow-sm">
-              <AppLogo alt={APP_NAME} className="h-[135%] w-[135%] object-contain" />
-            </span>
-
-            <span className="truncate text-lg font-bold uppercase tracking-tight sm:text-xl">
-              {APP_NAME}
-            </span>
-          </button>
-
-          <div className="hidden min-w-0 flex-1 items-center justify-center gap-2 text-sm sm:flex">
-            <span className="max-w-[220px] truncate font-semibold">
-              {selectedTournament?.name ?? "Tournament"}
-            </span>
-            <span className="text-slate-500">·</span>
-            <span className="text-slate-300">
-              Live Match
-            </span>
-          </div>
-
-          <button
-            type="button"
-            onClick={() => void refreshLiveInnings()}
-            disabled={liveRefreshLoading}
-            className="shrink-0 rounded-lg border border-slate-600 bg-white/5 px-3 py-2 text-xs font-semibold text-slate-200 transition hover:border-slate-500 hover:bg-white/10 disabled:cursor-not-allowed disabled:opacity-50"
-          >
-            {liveRefreshLoading ? "Refreshing..." : "Refresh"}
-          </button>
-        </div>
-      </header>
-    );
-  }
-
-  return (
-    <header className="mb-8">
-      <div className="flex items-center justify-between gap-4">
-        <button
-          type="button"
-          aria-label={APP_NAME}
-          onClick={handleSecretLogoTap}
-          className="flex min-w-0 items-center gap-3 rounded-xl px-2 py-1 transition hover:bg-slate-900 active:scale-[0.99]"
-        >
-          <span className="flex h-12 w-12 shrink-0 items-center justify-center overflow-hidden rounded-2xl bg-white shadow-lg">
-            <AppLogo alt={APP_NAME} className="h-[135%] w-[135%] object-contain" />
-          </span>
-
-          <span className="min-w-0">
-            <span className="block truncate text-2xl font-bold tracking-tight sm:text-3xl">
-              {APP_NAME}
-            </span>
-
-            <span className="block text-sm text-slate-400">
-              {pageMode === "TOURNAMENTS"
-                ? "Tournaments"
-                : pageMode === "DASHBOARD"
-                  ? selectedTournament?.name || "Tournament"
-                  : pageMode === "MATCH_SETUP"
-                    ? "Match Setup"
-                    : pageMode === "PLAYER_SELECTION"
-                      ? "Player Selection"
-                      : pageMode === "OPENING_PLAYERS"
-                        ? "Opening Players"
-                        : "Live Scoring"}
-            </span>
-          </span>
-        </button>
-      </div>
-    </header>
-  );
-}
-
-  // ---------------------------------------------------------
-  // Error
-  // ---------------------------------------------------------
-
-  function ErrorBanner() {
-    if (!error) {
-      return null;
-    }
-
-    return (
-      <div className="mb-5 rounded-2xl border border-red-900/60 bg-red-950/40 px-4 py-3 text-sm text-red-300 [color-scheme:dark]">
-        {error}
-      </div>
-    );
-  }
-
-  // ---------------------------------------------------------
-  // Tournament list
-  // ---------------------------------------------------------
-
-  function TournamentList() {
-    return (
-      <section>
-        <div className="mb-6">
-          <h2 className="text-xl font-semibold">
-            Tournament
-          </h2>
-
-          <p className="mt-1 text-sm text-slate-400">
-            Select an existing tournament or create a
-            new one.
-          </p>
-        </div>
-
-        <div className="mb-6">
-          <label
-            htmlFor="tournament"
-            className="mb-2 block text-sm font-medium text-slate-300 [color-scheme:dark]"
-          >
-            Select existing tournament
-          </label>
-
-          <select
-            id="tournament"
-            defaultValue=""
-            disabled={loadingTournaments}
-            onChange={(event) => {
-              const tournament =
-                tournaments.find(
-                  (item) =>
-                    item.id ===
-                    event.target.value,
-                );
-
-              if (tournament) {
-                openTournament(tournament);
-              }
-            }}
-            className="h-12 w-full rounded-xl border border-slate-700 bg-slate-950 px-4 text-white outline-none transition fo
-cus:border-emerald-500 focus:ring-2 focus:ring-emerald-500/20 [color-scheme:dark]"
-          >
-            <option value="">
-              {loadingTournaments
-                ? "Loading tournaments..."
-                : tournaments.length === 0
-                  ? "No tournaments available"
-                  : "Select a tournament"}
-            </option>
-
-            {tournaments.map(
-              (tournament) => (
-                <option
-                  key={tournament.id}
-                  value={tournament.id}
-                >
-                  {tournament.name}
-                  {tournament.season
-                    ? ` {String.fromCharCode(0x2014)} ${tournament.season}`
-                    : ""}
-                </option>
-              ),
-            )}
-          </select>
-        </div>
-
-        <div className="relative my-8">
-          <div className="absolute inset-0 flex items-center">
-            <div className="w-full border-t border-slate-800" />
-          </div>
-
-          <div className="relative flex justify-center">
-            <span className="bg-slate-900 px-4 text-xs uppercase tracking-wider text-slate-600">
-              or
-            </span>
-          </div>
-        </div>
-
-        <button
-          type="button"
-          onClick={() => {
-            setShowCreateTournament(true);
-            setError("");
-          }}
-          className="flex h-12 w-full items-center justify-center rounded-xl bg-emerald-500 px-6 font-semibold text-slate-950
- transition hover:bg-emerald-400"
-        >
-          + Create New Tournament
-        </button>
-
-        {tournaments.length === 0 &&
-          !loadingTournaments && (
-            <div className="mt-6 rounded-2xl border border-slate-800 bg-slate-950/70 p-6 text-center [color-scheme:dark]">
-              <div className="mb-2 text-3xl">
-                {String.fromCodePoint(0x1F3C6)}
-              </div>
-
-              <p className="font-medium text-slate-300 [color-scheme:dark]">
-                No tournaments yet
-              </p>
-
-              <p className="mt-1 text-sm text-slate-500">
-                Create your first tournament to get
-                started.
-              </p>
-            </div>
-          )}
-
-        {tournaments.length > 0 && (
-          <div className="mt-8">
-            <h3 className="mb-3 text-sm font-medium text-slate-400">
-              Existing Tournaments
-            </h3>
-
-            <div className="space-y-3">
-              {tournaments.map(
-                (tournament) => (
-                  <button
-                    type="button"
-                    key={tournament.id}
-                    onClick={() =>
-                      openTournament(
-                        tournament,
-                      )
-                    }
-                    className="w-full rounded-2xl border border-slate-800 bg-slate-950/70 p-4 text-left transition hover:bord
-er-emerald-500/50 hover:bg-slate-950 [color-scheme:dark]"
-                  >
-                    <div className="flex items-center justify-between gap-4">
-                      <div>
-                        <p className="font-semibold text-slate-200">
-                          {tournament.name}
-                        </p>
-
-                        <p className="mt-1 text-xs text-slate-500">
-                          {tournament.season
-                            ? `${tournament.season} ${String.fromCharCode(0x2022)} `
-                            : ""}
-                          {
-                            formatLabels[
-                              tournament.format
-                            ]
-                          }
-                        </p>
-
-              {tournament.status === "COMPLETED" && (
-                <div className="mt-2 flex flex-wrap items-center gap-2">
-                  <span className="rounded-full border border-emerald-500/30 bg-emerald-500/10 px-2.5 py-1 text-[11px] font-bold uppercase tracking-wide text-emerald-400">
-                    COMPLETED
-                  </span>
-                  {tournament.winner && (
-                    <span className="text-xs font-medium text-slate-300">
-                      Winner: {tournament.winner.name}
-                    </span>
-                  )}
-                </div>
-              )}
-                      </div>
-
-                      <div className="text-right text-xs text-slate-500">
-                        <div>
-                          {
-                            tournament
-                              .teams
-                              .length
-                          }{" "}
-                          teams
-                        </div>
-
-                        <div>
-                          {
-                            tournament
-                              ._count
-                              .matches
-                          }{" "}
-                          matches
-                        </div>
-                      </div>
-                    </div>
-                  </button>
-                ),
-              )}
-            </div>
-          </div>
-        )}
-      </section>
-    );
-  }
-
-  // ---------------------------------------------------------
-  // Create tournament modal
-  // ---------------------------------------------------------
-
-  function CreateTournament() {
-    if (!showCreateTournament) {
-      return null;
-    }
-
-    return (
-      <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-5 backdrop-blur-sm">
-        <div className="w-full max-w-lg rounded-3xl border border-slate-700 bg-slate-900 p-6 shadow-2xl sm:p-8 [color-scheme:dark]">
-          <div className="mb-6">
-            <h2 className="text-xl font-semibold">
-              Create New Tournament
-            </h2>
-
-            <p className="mt-1 text-sm text-slate-400">
-              Set up the competition before adding
-              teams and matches.
-            </p>
-          </div>
-
-          <div className="space-y-5">
-            <div>
-              <label
-                htmlFor="tournamentName"
-                className="mb-2 block text-sm font-medium text-slate-300 [color-scheme:dark]"
-              >
-                Tournament Name
-              </label>
-
-              <input
-                id="tournamentName"
-                type="text"
-                autoFocus
-                value={tournamentName}
-                onChange={(event) =>
-                  setTournamentName(
-                    event.target.value,
-                  )
-                }
-                placeholder="e.g. Corporate Cricket 2026"
-                className="h-12 w-full rounded-xl border border-slate-700 bg-slate-950 px-4 text-white outline-none placehold
-er:text-slate-600 focus:border-emerald-500 focus:ring-2 focus:ring-emerald-500/20"
-              />
-            </div>
-
-            <div>
-              <label
-                htmlFor="tournamentSeason"
-                className="mb-2 block text-sm font-medium text-slate-300 [color-scheme:dark]"
-              >
-                Season
-              </label>
-
-              <input
-                id="tournamentSeason"
-                type="text"
-                value={tournamentSeason}
-                onChange={(event) =>
-                  setTournamentSeason(
-                    event.target.value,
-                  )
-                }
-                placeholder="e.g. 2026"
-                className="h-12 w-full rounded-xl border border-slate-700 bg-slate-950 px-4 text-white outline-none placehold
-er:text-slate-600 focus:border-emerald-500 focus:ring-2 focus:ring-emerald-500/20"
-              />
-            </div>
-
-            <div>
-              <label
-                htmlFor="tournamentFormat"
-                className="mb-2 block text-sm font-medium text-slate-300 [color-scheme:dark]"
-              >
-                Tournament Format
-              </label>
-
-              <select
-                id="tournamentFormat"
-                value={tournamentFormat}
-                onChange={(event) =>
-                  setTournamentFormat(
-                    event.target.value,
-                  )
-                }
-                className="h-12 w-full rounded-xl border border-slate-700 bg-slate-950 px-4 text-white outline-none focus:bor
-der-emerald-500 [color-scheme:dark]"
-              >
-                <option value="LEAGUE">
-                  League
-                </option>
-
-                <option value="KNOCKOUT">
-                  Knockout
-                </option>
-
-                <option value="LEAGUE_KNOCKOUT">
-                  League + Knockout
-                </option>
-
-                <option value="CUSTOM">
-                  Custom
-                </option>
-              </select>
-            </div>
-          </div>
-
-          <div className="mt-8 flex gap-3">
-            <button
-              type="button"
-              disabled={loadingCreate}
-              onClick={() => {
-                setShowCreateTournament(
-                  false,
-                );
-                setError("");
-              }}
-              className="h-12 flex-1 rounded-xl border border-slate-700 px-5 font-medium text-slate-300 transition hover:bg-s
-late-800 disabled:opacity-50 [color-scheme:dark]"
-            >
-              Cancel
-            </button>
-
-            <button
-              type="button"
-              disabled={
-                loadingCreate ||
-                !tournamentName.trim()
-              }
-              onClick={() =>
-                void createTournament()
-              }
-              className="h-12 flex-1 rounded-xl bg-emerald-500 px-5 font-semibold text-slate-950 transition hover:bg-emerald-
-400 disabled:cursor-not-allowed disabled:bg-slate-800 disabled:text-slate-500"
-            >
-              {loadingCreate
-                ? "Creating..."
-                : "Create Tournament"}
-            </button>
-          </div>
-        </div>
-      </div>
-    );
-  }
-
-  // ---------------------------------------------------------
-  // Add team modal
-  // ---------------------------------------------------------
-
-  function AddTeamModal() {
-    if (!showAddTeam) {
-      return null;
-    }
-
-    const tournamentTeamIds = new Set(
-      selectedTournament?.teams.map(
-        (tournamentTeam) => tournamentTeam.team.id,
-      ) ?? [],
-    );
-
-    const availableExistingTeams = globalTeams;
-
-    return (
-      <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-5 backdrop-blur-sm">
-        <div className="w-full max-w-lg rounded-3xl border border-slate-700 bg-slate-900 p-6 shadow-2xl sm:p-8 [color-scheme:dark]">
-          <div className="mb-6">
-            <div className="mb-3 flex h-12 w-12 items-center justify-center rounded-2xl bg-emerald-500/10 text-2xl">
-              {String.fromCodePoint(0x1F3CF)}
-            </div>
-            <h2 className="text-xl font-semibold">Add Team</h2>
-            <p className="mt-1 text-sm text-slate-400">
-              Add a team to{" "}
-              <span className="font-medium text-slate-300 [color-scheme:dark]">
-                {selectedTournament?.name}
-              </span>.
-            </p>
-          </div>
-
-          <div className="mb-5 grid grid-cols-2 rounded-xl border border-slate-700 bg-slate-950 p-1 [color-scheme:dark]">
-            <button
-              type="button"
-              onClick={() => {
-                setAddTeamMode("EXISTING");
-                setError("");
-              }}
-              className={`rounded-lg px-3 py-2 text-sm font-medium transition ${
-                addTeamMode === "EXISTING"
-                  ? "bg-emerald-500 text-slate-950"
-                  : "text-slate-400 hover:text-white"
-              }`}
-            >
-              Existing Team
-            </button>
-            <button
-              type="button"
-              onClick={() => {
-                setAddTeamMode("NEW");
-                setError("");
-              }}
-              className={`rounded-lg px-3 py-2 text-sm font-medium transition ${
-                addTeamMode === "NEW"
-                  ? "bg-emerald-500 text-slate-950"
-                  : "text-slate-400 hover:text-white"
-              }`}
-            >
-              Create New
-            </button>
-          </div>
-
-          {addTeamMode === "EXISTING" ? (
-            <div className="space-y-4">
-              <div>
-                <label
-                  htmlFor="existingTeam"
-                  className="mb-2 block text-sm font-medium text-slate-300 [color-scheme:dark]"
-                >
-                  Select Existing Team
-                </label>
-                <select
-                  id="existingTeam"
-                  autoFocus
-                  value={selectedExistingTeamId}
-                  onChange={(event) =>
-                    setSelectedExistingTeamId(event.target.value)
-                  }
-                  disabled={
-                    loadingGlobalTeams ||
-                    availableExistingTeams.length === 0
-                  }
-                  className="h-12 w-full rounded-xl border border-slate-700 bg-slate-950 px-4 text-white outline-none transition focus:border-emerald-500 disabled:opacity-50 [color-scheme:dark]"
-                >
-                  <option value="">
-                    {loadingGlobalTeams
-                      ? "Loading teams..."
-                      : availableExistingTeams.length === 0
-                        ? "No teams available"
-                        : "Select a team"}
-                  </option>
-                  {availableExistingTeams.map((team) => {
-                    const alreadyInTournament = tournamentTeamIds.has(team.id);
-                    return (
-                      <option key={team.id} value={team.id} disabled={alreadyInTournament}>
-                        {team.name}
-                        {team.shortName ? ` (${team.shortName})` : ""}
-                        {alreadyInTournament ? " - already in tournament" : ""}
-                      </option>
-                    );
-                  })}
-                </select>
-                <p className="mt-2 text-xs text-slate-500">
-                  All existing teams are shown. Teams already in this tournament are disabled.
-                </p>
-              </div>
-            </div>
-          ) : (
-            <div className="space-y-5">
-              <div>
-                <label
-                  htmlFor="teamName"
-                  className="mb-2 block text-sm font-medium text-slate-300 [color-scheme:dark]"
-                >
-                  Team Name
-                </label>
-                <input
-                  id="teamName"
-                  type="text"
-                  autoFocus
-                  value={teamName}
-                  onChange={(event) =>
-                    setTeamName(event.target.value)
-                  }
-                  placeholder="e.g. Mumbai Warriors"
-                  className="h-12 w-full rounded-xl border border-slate-700 bg-slate-950 px-4 text-white outline-none placeholder:text-slate-600 focus:border-emerald-500"
-                />
-              </div>
-              <div>
-                <label
-                  htmlFor="teamShortName"
-                  className="mb-2 block text-sm font-medium text-slate-300 [color-scheme:dark]"
-                >
-                  Short Name
-                </label>
-                <input
-                  id="teamShortName"
-                  type="text"
-                  maxLength={8}
-                  value={teamShortName}
-                  onChange={(event) =>
-                    setTeamShortName(event.target.value)
-                  }
-                  placeholder="e.g. MW"
-                  className="h-12 w-full rounded-xl border border-slate-700 bg-slate-950 px-4 text-white outline-none placeholder:text-slate-600 focus:border-emerald-500"
-                />
-                <p className="mt-2 text-xs text-slate-600">
-                  Optional {String.fromCharCode(0x2014)} maximum 8 characters.
-                </p>
-              </div>
-            </div>
-          )}
-
-          <div className="mt-8 flex gap-3">
-            <button
-              type="button"
-              disabled={loadingTeamCreate}
-              onClick={() => {
-                setShowAddTeam(false);
-                setSelectedExistingTeamId("");
-                setTeamName("");
-                setTeamShortName("");
-                setError("");
-              }}
-              className="h-12 flex-1 rounded-xl border border-slate-700 px-5 font-medium text-slate-300 hover:bg-slate-800 disabled:opacity-50 [color-scheme:dark]"
-            >
-              Cancel
-            </button>
-            <button
-              type="button"
-              disabled={
-                loadingTeamCreate ||
-                (addTeamMode === "EXISTING"
-                  ? !selectedExistingTeamId
-                  : !teamName.trim())
-              }
-              onClick={() =>
-                addTeamMode === "EXISTING"
-                  ? void addExistingTeamToTournament()
-                  : void createTeam()
-              }
-              className="h-12 flex-1 rounded-xl bg-emerald-500 px-5 font-semibold text-slate-950 hover:bg-emerald-400 disabled:cursor-not-allowed disabled:bg-slate-800 disabled:text-slate-500"
-            >
-              {loadingTeamCreate
-                ? "Adding..."
-                : addTeamMode === "EXISTING"
-                  ? "Add Existing Team"
-                  : "Create Team"}
-            </button>
-          </div>
-        </div>
-      </div>
-    );
-  }
-
-  // ---------------------------------------------------------
-  // Add player modal
-  // ---------------------------------------------------------
-
-  function AddPlayerModal() {
-    const selectedTeam =
-      selectedTournament?.teams.find(
-        (tournamentTeam) => tournamentTeam.team.id === selectedTeamId,
-      )?.team ?? null;
-
-    const currentTeamPlayerIds = new Set(
-      teamPlayers.map((membership) => membership.player.id),
-    );
-
-    const availableExistingPlayers = availablePlayers.filter(
-      (player) => !currentTeamPlayerIds.has(player.id),
-    );
-
-    if (!showAddPlayer || !selectedTeam) return null;
-
-    const close = () => {
-      setShowAddPlayer(false);
-      setEditingPlayerId(null);
-      setSelectedExistingPlayerId("");
-      setAddPlayerMode("EXISTING");
-      resetPlayerForm();
-      setError("");
-    };
-
-    return (
-      <div className="fixed inset-0 z-[80] flex items-center justify-center bg-black/70 p-5 backdrop-blur-sm">
-        <div className="w-full max-w-lg rounded-3xl border border-slate-700 bg-slate-900 p-6 shadow-2xl sm:p-8 [color-scheme:dark]">
-          <div className="mb-6">
-            <h2 className="text-xl font-semibold">{editingPlayerId ? "Edit Player" : "Add Player"}</h2>
-            <p className="mt-2 text-sm text-slate-400">
-              {editingPlayerId ? "Update player details for " : "Add a player to "}
-              <span className="font-medium text-slate-300">{selectedTeam.name}</span>.
-            </p>
-          </div>
-
-          {!editingPlayerId && (
-            <div className="mb-5 grid grid-cols-2 rounded-xl border border-slate-700 bg-slate-950 p-1">
-              <button type="button" onClick={() => { setAddPlayerMode("EXISTING"); setSelectedExistingPlayerId(""); setError(""); void loadAvailablePlayers(); }} className={`rounded-lg px-3 py-2 text-sm font-medium ${addPlayerMode === "EXISTING" ? "bg-emerald-500 text-slate-950" : "text-slate-400"}`}>Existing Player</button>
-              <button type="button" onClick={() => { setAddPlayerMode("NEW"); setSelectedExistingPlayerId(""); resetPlayerForm(); setError(""); }} className={`rounded-lg px-3 py-2 text-sm font-medium ${addPlayerMode === "NEW" ? "bg-emerald-500 text-slate-950" : "text-slate-400"}`}>Create New</button>
-            </div>
-          )}
-
-          {!editingPlayerId && addPlayerMode === "EXISTING" ? (
-            <div>
-              <label htmlFor="existingPlayer" className="mb-2 block text-sm font-medium text-slate-300">Select Existing Player</label>
-              <select id="existingPlayer" autoFocus value={selectedExistingPlayerId} onChange={(event) => setSelectedExistingPlayerId(event.target.value)} disabled={loadingAvailablePlayers || availableExistingPlayers.length === 0} className="h-12 w-full rounded-xl border border-slate-700 bg-slate-950 px-4 text-white [color-scheme:dark]">
-                <option value="">{loadingAvailablePlayers ? "Loading players..." : availableExistingPlayers.length === 0 ? "No existing players available" : "Select a player"}</option>
-                {availableExistingPlayers.map((player) => (
-                  <option key={player.id} value={player.id}>
-                    {player.jerseyNumber != null ? `#${player.jerseyNumber} ` : ""}{player.name}
-                  </option>
-                ))}
-              </select>
-              <p className="mt-2 text-xs text-slate-500">Players already registered with {selectedTeam.name} are hidden.</p>
-            </div>
-          ) : (
-            <div className="space-y-4">
-              <div>
-                <label htmlFor="playerName" className="mb-2 block text-sm font-medium text-slate-300">Player Name</label>
-                <input id="playerName" type="text" autoFocus value={playerName} onChange={(event) => setPlayerName(event.target.value)} placeholder="e.g. Rahul Sharma" className="h-12 w-full rounded-xl border border-slate-700 bg-slate-950 px-4 text-white placeholder:text-slate-600" />
-              </div>
-              <div>
-                <label htmlFor="playerJerseyNumber" className="mb-2 block text-sm font-medium text-slate-300">Jersey Number</label>
-                <input id="playerJerseyNumber" type="text" inputMode="numeric" pattern="[0-9]*" value={playerJerseyNumber} onChange={(event) => setPlayerJerseyNumber(event.target.value.replace(/\D/g, ""))} placeholder="Optional" className="h-12 w-full rounded-xl border border-slate-700 bg-slate-950 px-4 text-white placeholder:text-slate-600" />
-              </div>
-              <div className="grid gap-4 sm:grid-cols-2">
-                <div>
-                  <label htmlFor="playerBattingStyle" className="mb-2 block text-sm font-medium text-slate-300">Batting Hand</label>
-                  <select id="playerBattingStyle" value={playerBattingStyle} onChange={(event) => setPlayerBattingStyle(event.target.value)} className="h-12 w-full rounded-xl border border-slate-700 bg-slate-950 px-4 text-white [color-scheme:dark]"><option value="">Select hand</option><option value="Right-handed">Right-handed</option><option value="Left-handed">Left-handed</option></select>
-                </div>
-                <div>
-                  <label htmlFor="playerBowlingStyle" className="mb-2 block text-sm font-medium text-slate-300">Bowling Arm</label>
-                  <select id="playerBowlingStyle" value={playerBowlingStyle} onChange={(event) => setPlayerBowlingStyle(event.target.value)} className="h-12 w-full rounded-xl border border-slate-700 bg-slate-950 px-4 text-white [color-scheme:dark]"><option value="">Select arm</option><option value="Right-arm">Right-arm</option><option value="Left-arm">Left-arm</option></select>
-                </div>
-              </div>
-            </div>
-          )}
-
-          <div className="mt-8 flex gap-3">
-            <button type="button" disabled={loadingPlayerCreate || loadingPlayerUpdate} onClick={close} className="h-12 flex-1 rounded-xl border border-slate-700 px-5 font-medium text-slate-300 hover:bg-slate-800 disabled:opacity-50">Cancel</button>
-            <button type="button" disabled={loadingPlayerCreate || loadingPlayerUpdate || (editingPlayerId ? !playerName.trim() : addPlayerMode === "EXISTING" ? !selectedExistingPlayerId : !playerName.trim())} onClick={() => void (editingPlayerId ? updatePlayerForTeam() : addPlayerMode === "EXISTING" ? addExistingPlayerToTeam() : createPlayerForTeam())} className="h-12 flex-1 rounded-xl bg-emerald-500 px-5 font-semibold text-slate-950 hover:bg-emerald-400 disabled:cursor-not-allowed disabled:bg-slate-800 disabled:text-slate-500">
-              {editingPlayerId ? (loadingPlayerUpdate ? "Saving..." : "Save Changes") : addPlayerMode === "EXISTING" ? (loadingPlayerCreate ? "Adding..." : "Add Existing Player") : (loadingPlayerCreate ? "Adding..." : "Add Player")}
-            </button>
-          </div>
-        </div>
-      </div>
-    );
-  }
-
-  // ---------------------------------------------------------
-  // Hidden maintenance modal
-  // ---------------------------------------------------------
-
-  function MaintenanceModal() {
-    if (maintenanceMode === "CLOSED") return null;
-
-    return (
-      <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/80 p-5 backdrop-blur-md">
-        <div className="w-full max-w-md rounded-3xl border border-slate-700 bg-slate-900 p-6 shadow-2xl sm:p-8 [color-scheme:dark]">
-          {maintenanceMode === "PIN" && (
-            <>
-              <div className="mb-6">
-                <div className="mb-4 flex h-12 w-12 items-center justify-center rounded-2xl bg-amber-500/10 text-2xl">LOCK</div>
-                <h2 className="text-xl font-semibold">Maintenance</h2>
-                <p className="mt-2 text-sm text-slate-400">Enter the maintenance PIN to continue.</p>
-              </div>
-              <input
-                type="password"
-                inputMode="numeric"
-                autoFocus
-                value={maintenancePin}
-                onChange={(event) => setMaintenancePin(event.target.value)}
-                onKeyDown={(event) => { if (event.key === "Enter") verifyMaintenancePin(); }}
-                placeholder="PIN"
-                className="h-12 w-full rounded-xl border border-slate-700 bg-slate-950 px-4 text-center text-xl tracking-[0.4em] text-white outline-none focus:border-emerald-500 focus:ring-2 focus:ring-emerald-500/20"
-              />
-              {maintenanceError && <p className="mt-3 text-sm text-red-400">{maintenanceError}</p>}
-              <div className="mt-6 flex gap-3">
-                <button type="button" onClick={() => { setMaintenanceMode("CLOSED"); setMaintenancePin(""); setMaintenanceError(""); }} className="h-12 flex-1 rounded-xl border border-slate-700 px-5 font-medium text-slate-300 hover:bg-slate-800 [color-scheme:dark]">Cancel</button>
-                <button type="button" onClick={verifyMaintenancePin} className="h-12 flex-1 rounded-xl bg-emerald-500 px-5 font-semibold text-slate-950 hover:bg-emerald-400">Unlock</button>
-              </div>
-            </>
-          )}
-
-          {maintenanceMode === "MENU" && (
-            <>
-              <div className="mb-6 flex items-start justify-between gap-4">
-                <div>
-                  <div className="mb-4 flex h-12 w-12 items-center justify-center rounded-2xl bg-red-500/10 text-2xl">TOOLS</div>
-                  <h2 className="text-xl font-semibold">Tournament Management</h2>
-                  <p className="mt-2 text-sm text-slate-400">Maintenance tools</p>
-                </div>
-                <button type="button" onClick={() => setMaintenanceMode("CLOSED")} className="rounded-xl border border-slate-700 px-3 py-2 text-slate-400 hover:bg-slate-800 [color-scheme:dark]">-</button>
-              </div>
-
-              <div className="mb-4">
-                <AppLogoEditor maintenancePin={maintenancePin} />
-              </div>
-
-              <div className="max-h-[55vh] space-y-3 overflow-y-auto">
-                {tournaments.length === 0 ? (
-                  <div className="rounded-2xl border border-dashed border-slate-700 p-6 text-center text-sm text-slate-500 [color-scheme:dark]">No tournaments found.</div>
-                ) : (
-                  tournaments.map((tournament) => (
-                    <div key={tournament.id} className="rounded-2xl border border-slate-800 bg-slate-950 p-4 [color-scheme:dark]">
-                      <div className="mb-3">
-                        <p className="font-semibold text-slate-200">{tournament.name}</p>
-                        <p className="mt-1 text-xs text-slate-500">
-                           {tournament.season ? `${tournament.season}  -  ` : ""}
-                           {tournament._count.matches} matches
-                        </p>
-                      </div>
-
-                      <TournamentLogoEditor
-                        tournamentId={tournament.id}
-                        currentLogo={tournament.logo}
-                        maintenancePin={maintenancePin}
-                      />
-                      <button
-                        type="button"
-                        disabled={deletingTournamentId === tournament.id}
-                        onClick={() => void deleteTournament(tournament)}
-                        className="h-10 w-full rounded-xl border border-red-500/40 bg-red-500/10 px-4 text-sm font-semibold text-red-400 transition hover:bg-red-500/20 disabled:cursor-not-allowed disabled:opacity-50 [color-scheme:dark]"
-                      >
-                        {deletingTournamentId === tournament.id ? "Deleting..." : "Delete Tournament"}
-                      </button>
-                    </div>
-                  ))
-                )}
-              </div>
-
-              <button type="button" onClick={() => setMaintenanceMode("CLOSED")} className="mt-6 h-12 w-full rounded-xl border border-slate-700 font-medium text-slate-300 hover:bg-slate-800 [color-scheme:dark]">Close</button>
-            </>
-          )}
-        </div>
-      </div>
-    );
-  }
-
-  // ---------------------------------------------------------
-  // Tournament dashboard
-  // ---------------------------------------------------------
-
-  function TournamentDashboard() {
-    if (!selectedTournament) {
-      return null;
-    }
-
-  const selectedTeam =
-  selectedTournament.teams.find(
-    (tournamentTeam) =>
-      tournamentTeam.team.id === selectedTeamId,
-  )?.team;
-  
-    return (
-      <section>
-        <div className="mb-8 flex flex-col justify-between gap-4 sm:flex-row sm:items-start">
-          <div>
-            <p className="text-sm text-emerald-400">
-              Tournament
-            </p>
-
-            <h2 className="mt-1 text-2xl font-bold">
-              {selectedTournament.name}
-            </h2>
-
-            <p className="mt-2 text-sm text-slate-400">
-    Season : {selectedTournament.season ?? "-"}
-    {"   "}
-    Format : {formatLabels[selectedTournament.format]}
-  </p>
-          </div>
-
-          <button
-            type="button"
-            onClick={openMatchSetup}
-            className="h-12 rounded-xl bg-emerald-500 px-6 font-semibold text-slate-950 transition hover:bg-emerald-400"
-          >
-            + New Match
-          </button>
-        </div>
-
-        <div className="grid gap-4 sm:grid-cols-3">
-          <div className="rounded-2xl border border-slate-800 bg-slate-950/70 p-5 [color-scheme:dark]">
-            <p className="text-sm text-slate-500">
-              Teams
-            </p>
-
-            <p className="mt-2 text-3xl font-bold text-slate-200">
-              {selectedTournament.teams.length}
-            </p>
-          </div>
-
-          <div className="rounded-2xl border border-slate-800 bg-slate-950/70 p-5 [color-scheme:dark]">
-            <p className="text-sm text-slate-500">
-              Matches
-            </p>
-
-            <p className="mt-2 text-3xl font-bold text-slate-200">
-              {selectedTournament._count.matches}
-            </p>
-          </div>
-
-          <div className="rounded-2xl border border-slate-800 bg-slate-950/70 p-5 [color-scheme:dark]">
-            <p className="text-sm text-slate-500">
-              Format
-            </p>
-
-            <p className="mt-2 text-lg font-semibold text-slate-200">
-              {
-                formatLabels[
-                  selectedTournament.format
-                ]
-              }
-            </p>
-          </div>
-        </div>
-
-        <LeaguePanel tournamentId={selectedTournament.id} format={selectedTournament.format} />
-
-        {/* Live Matches */}
-        <div className="mt-8 rounded-2xl border border-emerald-500/30 bg-emerald-500/5 p-6 [color-scheme:dark]">
-          <div className="flex flex-col justify-between gap-3 sm:flex-row sm:items-center">
-            <div>
-              <h3 className="font-semibold">
-                Live Matches
-              </h3>
-              <p className="mt-1 text-sm text-slate-500">
-                Resume a match that is already in progress.
-              </p>
-            </div>
-
-            <button
-              type="button"
-              onClick={() => {
-  void loadLiveMatches(
-    selectedTournament.id,
-  );
-
-  void loadCompletedMatches(
-    selectedTournament.id,
-  );
-}}
-              disabled={loadingLiveMatches}
-              className="h-10 rounded-xl border border-slate-700 px-4 text-sm font-semibold text-slate-300 hover:bg-slate-900 disabled:opacity-50 [color-scheme:dark]"
-            >
-              {loadingLiveMatches
-                ? "Refreshing..."
-                : "Refresh"}
-            </button>
-          </div>
-
-          <div className="mt-5 space-y-3">
-            {liveMatches.map((match) => {
-              const innings =
-                [...match.innings].reverse().find(
-                  (item) => item.status === "LIVE",
-                ) ?? match.innings[match.innings.length - 1];
-
-              return (
-                <div
-                  key={match.id}
-                  className="flex flex-col gap-4 rounded-2xl border border-slate-800 bg-slate-950 p-4 sm:flex-row sm:items-center sm:justify-between [color-scheme:dark]"
-                >
-                  <div>
-                    <div className="flex items-center gap-2">
-                      <span className="h-2.5 w-2.5 rounded-full bg-emerald-400" />
-                      <span className="text-xs font-bold uppercase tracking-wider text-emerald-400">
-                        LIVE
-                      </span>
-                    </div>
-
-                    <p className="mt-2 text-lg font-bold">
-                      {match.teamA.name}
-                      {" vs "}
-                      {match.teamB.name}
-                    </p>
-
-                    {innings && (
-                      <p className="mt-1 text-sm text-slate-400">
-                        {innings.totalRuns}/{innings.wickets}
-                        {"  "}
-                        <span className="text-slate-600">
-                           - 
-                        </span>
-                        {"  "}
-                        {Math.floor(
-                          innings.legalBalls / 6,
-                        )}
-                        .
-                        {innings.legalBalls % 6}
-                        {" overs"}
-                        {"   -   "}
-                        {match.bowlingMode === "DOUBLE"
-                          ? "Double Bowler"
-                          : "Normal"}
-                      </p>
-                    )}
-                  </div>
-
-<div className="flex flex-wrap items-center gap-2">
-  <button
-    type="button"
-    onClick={() => {
-      window.open(
-        `/score/${match.id}`,
-        "_blank",
-        "noopener,noreferrer",
-      );
-    }}
-    className="h-11 rounded-xl border border-slate-600 bg-slate-900 px-4 font-semibold text-slate-200 transition hover:border-slate-500 hover:bg-slate-800"
-  >
-    Open Live Score
-  </button>
-
-  <button
-    type="button"
-    onClick={async () => {
-      const url = `${window.location.origin}/score/${match.id}`;
-
-      try {
-        if (navigator.share) {
-          await navigator.share({
-            title: `${match.teamA.name} vs ${match.teamB.name}`,
-            text: "Live Score",
-            url,
-          });
-          return;
-        }
-
-        await navigator.clipboard.writeText(url);
-        setError("Live score link copied.");
-      } catch (error) {
-        if (
-          error instanceof DOMException &&
-          error.name === "AbortError"
-        ) {
-          return;
-        }
-
-        console.error(
-          "Share live score error:",
-          error,
-        );
-        setError(
-          "Unable to share the live score link.",
-        );
-      }
-    }}
-    className="h-11 rounded-xl border border-slate-600 bg-slate-900 px-4 font-semibold text-slate-200 transition hover:border-slate-500 hover:bg-slate-800"
-  >
-    Share
-  </button>
-
-  <button
-    type="button"
-    onClick={() => void resumeMatch(match.id)}
-    disabled={resumingMatchId === match.id}
-    className="h-11 rounded-xl bg-emerald-500 px-5 font-bold text-slate-950 hover:bg-emerald-400 disabled:opacity-50"
-  >
-    {resumingMatchId === match.id
-      ? "Opening..."
-      : "Resume Match"}
-  </button>
-</div>
-                </div>
-              );
-            })}
-
-            {!loadingLiveMatches &&
-              liveMatches.length === 0 && (
-                <div className="rounded-xl border border-dashed border-slate-800 p-6 text-center text-sm text-slate-500 [color-scheme:dark]">
-                  No live matches in this tournament.
-                </div>
-              )}
-          </div>
-        </div>
-
-        {/* Teams */}
-        <div className="mt-8 rounded-2xl border border-slate-800 bg-slate-950/70 p-6 [color-scheme:dark]">
-          <div className="flex flex-col justify-between gap-4 sm:flex-row sm:items-center">
-            <div>
-              <h3 className="font-semibold">
-                Teams
-              </h3>
-
-              <p className="mt-1 text-sm text-slate-500">
-                Teams participating in this tournament.
-              </p>
-            </div>
-
-            <button
-              type="button"
-              onClick={openAddTeamModal}
-              className="h-10 rounded-xl border border-emerald-500/50 px-4 text-sm font-semibold text-emerald-400 transition 
-hover:bg-emerald-500/10 [color-scheme:dark]"
-            >
-              + Add Team
-            </button>
-          </div>
-
-          {selectedTournament.teams.length === 0 ? (
-            <div className="mt-6 rounded-xl border border-dashed border-slate-800 p-8 text-center [color-scheme:dark]">
-              <div className="text-3xl">
-                {String.fromCodePoint(0x1F3CF)}
-              </div>
-
-              <p className="mt-3 font-medium text-slate-300 [color-scheme:dark]">
-                No teams yet
-              </p>
-
-              <p className="mt-1 text-sm text-slate-500">
-                Add at least two teams before creating
-                a match.
-              </p>
-
-              <button
-                type="button"
-                onClick={openAddTeamModal}
-                className="mt-5 rounded-xl bg-emerald-500 px-5 py-2.5 text-sm font-semibold text-slate-950 hover:bg-emerald-4
-00"
-              >
-                + Add First Team
-              </button>
-            </div>
-          ) : (
-            <div className="mt-5 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-              {selectedTournament.teams.map(
-                (tournamentTeam) => (
-                  <div
-                    key={tournamentTeam.id}
-                    onClick={() => {
-                      selectTeam(tournamentTeam.team.id);
-                    }}
-                    className="cursor-pointer rounded-2xl border border-slate-800 bg-slate-900 p-4 [color-scheme:dark]"
-                  >
-                    <div className="flex items-start justify-between gap-3">
-                      <div>
-                        <p className="font-semibold text-slate-200">
-                          {
-                            tournamentTeam
-                              .team.name
-                          }
-                        </p>
-
-                        {tournamentTeam.team
-                          .shortName && (
-                          <p className="mt-1 text-xs font-medium text-emerald-400">
-                            {
-                              tournamentTeam
-                                .team
-                                .shortName
-                            }
-                          </p>
-                        )}
-                      </div>
-
-                      <div className="flex shrink-0 items-center gap-2">
-                        <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-slate-800 text-lg">
-                          {String.fromCodePoint(0x1F3CF)}
-                        </div>
-                        <button type="button" title="Remove team from this tournament" aria-label={`Remove ${tournamentTeam.team.name} from this tournament`} onClick={(event) => { event.stopPropagation(); void removeTeamFromCurrentTournament(tournamentTeam.team.id, tournamentTeam.team.name); }} className="flex h-9 w-9 items-center justify-center rounded-xl border border-red-500/30 bg-red-500/10 text-lg font-bold text-red-400 transition hover:bg-red-500/20">−</button>
-                      </div>
-                    </div>
-
-                    <div className="mt-4 border-t border-slate-800 pt-3 [color-scheme:dark]">
-                      <p className="text-xs text-slate-500">
-                        {tournamentTeam.team
-                          ._count?.players ??
-                          0}{" "}
-                        players
-                      </p>
-                    </div>
-                  </div>
-                ),
-              )}
-            </div>
-          )}
-        </div>
-
-        {/* Players */}
-        {selectedTeamId && (
-          <div className="mt-5 rounded-2xl border border-emerald-500/20 bg-slate-950/70 p-6 [color-scheme:dark]">
-            <div className="flex flex-col justify-between gap-4 sm:flex-row sm:items-center">
-              <div>
-                <p className="text-sm text-emerald-400">
-                  Team Players
-                </p>
-
-                <h3 className="mt-1 font-semibold text-slate-200">
-                  {selectedTeam?.name}
-                </h3>
-
-                <p className="mt-1 text-sm text-slate-500">
-                  Manage the registered players for this team.
-                </p>
-              </div>
-
-              <button
-                type="button"
-                onClick={openAddPlayerModal}
-                className="h-10 rounded-xl bg-emerald-500 px-4 text-sm font-semibold text-slate-950 transition hover:bg-emerald-400"
-              >
-                + Add Player
-              </button>
-            </div>
-
-            {loadingTeamPlayers ? (
-              <div className="mt-5 rounded-xl border border-dashed border-slate-800 p-6 text-center text-sm text-slate-500 [color-scheme:dark]">
-                Loading players...
-              </div>
-            ) : teamPlayers.length === 0 ? (
-              <div className="mt-5 rounded-xl border border-dashed border-slate-800 p-6 text-center [color-scheme:dark]">
-                <div className="text-3xl">PLAYER</div>
-
-                <p className="mt-3 font-medium text-slate-300 [color-scheme:dark]">
-                  No players yet
-                </p>
-
-                <p className="mt-1 text-sm text-slate-500">
-                  Add the players registered for this team.
-                </p>
-              </div>
-            ) : (
-              <div className="mt-5 grid gap-3 sm:grid-cols-2">
-                {teamPlayers.map((membership) => (
-                  <div
-                    key={membership.id}
-                    className="rounded-2xl border border-slate-800 bg-slate-900 p-4 [color-scheme:dark]"
-                  >
-                    <div className="flex items-start justify-between gap-3">
-                      <div className="min-w-0">
-                        <p className="truncate font-semibold text-slate-200">
-                          {membership.player.name}
-                        </p>
-
-                        <div className="mt-2 flex flex-wrap gap-2 text-xs">
-                          {membership.player.jerseyNumber !== null && (
-                            <span className="rounded-lg bg-slate-800 px-2 py-1 text-slate-400">
-                              #{membership.player.jerseyNumber}
-                            </span>
-                          )}
-
-                          {membership.player.battingStyle && (
-                            <span className="rounded-lg bg-emerald-500/10 px-2 py-1 text-emerald-400">
-                              Bat: {membership.player.battingStyle}
-                            </span>
-                          )}
-
-                          {membership.player.bowlingStyle && (
-                            <span className="rounded-lg bg-slate-800 px-2 py-1 text-slate-400">
-                              Bowl: {membership.player.bowlingStyle}
-                            </span>
-                          )}
-                        </div>
-                      </div>
-
-                      <div className="flex shrink-0 items-center gap-2">
-                        <button
-                          type="button"
-                          onClick={() => {
-                            setEditingPlayerId(
-                              membership.player.id,
-                            );
-                            setPlayerName(
-                              membership.player.name,
-                            );
-                            setPlayerJerseyNumber(
-                              membership.player.jerseyNumber !== null
-                                ? String(
-                                    membership.player.jerseyNumber,
-                                  )
-                                : "",
-                            );
-                            setPlayerBattingStyle(
-                              membership.player.battingStyle || "",
-                            );
-                            setPlayerBowlingStyle(
-                              membership.player.bowlingStyle || "",
-                            );
-                            setError("");
-                            setShowAddPlayer(true);
-                          }}
-                          className="flex h-10 items-center gap-2 rounded-xl border border-slate-700 bg-slate-800 px-3 text-sm font-medium text-slate-300 transition hover:border-emerald-500/50 hover:bg-emerald-500/10 hover:text-emerald-400 [color-scheme:dark]"
-                        >
-                          <span>EDIT</span>
-                        </button>
-
-                        <button type="button" title="Remove player from current roster" aria-label={`Remove ${membership.player.name} from current roster`} onClick={() => void removePlayerFromCurrentRoster(membership.player.id, membership.player.name)} className="flex h-10 w-10 items-center justify-center rounded-xl border border-red-500/30 bg-red-500/10 text-xl font-bold text-red-400 transition hover:bg-red-500/20">−</button>
-                      </div>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            )}
-          </div>
-        )}
-
-        {/* Matches */}
-        <div className="mt-5 rounded-2xl border border-slate-800 bg-slate-950/70 p-6 [color-scheme:dark]">
-          <div className="flex flex-col justify-between gap-3 sm:flex-row sm:items-center">
-            <div>
-              <h3 className="font-semibold">Previous Matches</h3>
-              <p className="mt-1 text-sm text-slate-500">
-                Completed matches from this tournament.
-              </p>
-            </div>
-
-            <button
-              type="button"
-              onClick={() => void loadCompletedMatches(selectedTournament.id)}
-              disabled={loadingCompletedMatches}
-              className="h-10 rounded-xl border border-slate-700 px-4 text-sm font-semibold text-slate-300 hover:bg-slate-900 disabled:opacity-50 [color-scheme:dark]"
-            >
-              {loadingCompletedMatches ? "Refreshing..." : "Refresh"}
-            </button>
-          </div>
-
-          <div className="mt-5 space-y-3">
-            {completedMatches.map((match) => {
-              const innings = [...match.innings].sort(
-                (a, b) => a.inningsNumber - b.inningsNumber,
-              );
-              const firstInnings = innings[0];
-              const lastInnings = innings[innings.length - 1];
-              const expanded = expandedMatchId === match.id;
-
-              const formatScore = (item: (typeof innings)[number]) =>
-                `${item.totalRuns}/${item.wickets} (${Math.floor(item.legalBalls / 6)}.${item.legalBalls % 6})`;
-
-              const teamName = (teamId: string) =>
-                teamId === match.teamA.id ? match.teamA.name : match.teamB.name;
-
-              const winnerName =
-                match.winnerId === match.teamA.id
-                  ? match.teamA.name
-                  : match.winnerId === match.teamB.id
-                    ? match.teamB.name
-                    : null;
-
-
-              return (
-                <div
-                  key={match.id}
-                  className={`rounded-2xl border border-slate-800 bg-slate-950 transition ${expanded ? "p-4" : "p-3"}`}
-                >
-                  <button
-                    type="button"
-                    onClick={() => setExpandedMatchId(expanded ? null : match.id)}
-                    className="w-full text-left"
-                    aria-expanded={expanded}
-                  >
-                    <div className="flex min-w-0 items-center justify-between gap-3">
-                      <p className="truncate text-base font-bold text-slate-100">
-                        {match.teamA.name} <span className="text-slate-600">vs</span> {match.teamB.name}
-                      </p>
-                      <div className="flex shrink-0 items-center gap-3">
-                        <span className="whitespace-nowrap text-xs font-medium text-slate-500">
-                          {new Date(match.createdAt).toLocaleDateString("en-IN", { day: "2-digit", month: "short", year: "numeric" })}
-                        </span>
-                        <span className="text-xs text-slate-500">{expanded ? "Collapse" : "Expand"}</span>
-                      </div>
-                    </div>
-                  </button>
-
-                  {expanded && (
-                    <div className="mt-3 border-t border-slate-800 pt-3">
-                      <div className="space-y-1.5 text-sm">
-                        {innings.map((item) => (
-                          <div key={item.id} className="flex flex-wrap items-center justify-between gap-2">
-                            <span className="text-slate-300">{teamName(item.battingTeamId)}</span>
-                            <span className="font-bold text-slate-100">{formatScore(item)}</span>
-                          </div>
-                        ))}
-                      </div>
-
-                      <div className="mt-3 flex flex-wrap items-center justify-between gap-2 border-t border-slate-800 pt-3 text-xs">
-                        <div className="flex flex-wrap items-center gap-2">
-                          {winnerName ? (
-                            <span className="rounded-lg bg-emerald-500/10 px-2.5 py-1 font-semibold text-emerald-400">{winnerName} won</span>
-                          ) : (
-                            <span className="rounded-lg bg-slate-800 px-2.5 py-1 font-semibold text-slate-400">Match drawn / tied</span>
-                          )}
-                          <span className="rounded-lg bg-slate-800 px-2.5 py-1 text-slate-500">{match.oversPerInnings} overs</span>
-                          <span className="rounded-lg bg-slate-800 px-2.5 py-1 text-slate-500">{match.inningsPerMatch} innings</span>
-                        </div>
-
-                        <button
-                          type="button"
-                          onClick={(event) => {
-                            event.stopPropagation();
-                            void openScorecard(match.id);
-                          }}
-                          disabled={loadingScorecard}
-                          className="h-10 rounded-xl border border-emerald-500/40 bg-emerald-500/10 px-4 font-semibold text-emerald-400 transition hover:bg-emerald-500/20 disabled:opacity-50"
-                        >
-                          {loadingScorecard ? "Loading..." : "Scorecard"}
-                        </button>
-                      </div>
-                    </div>
-                  )}
-                </div>
-              );
-            })}
-
-            {!loadingCompletedMatches && completedMatches.length === 0 && (
-              <div className="rounded-xl border border-dashed border-slate-800 p-6 text-center text-sm text-slate-500 [color-scheme:dark]">
-                No completed matches in this tournament.
-              </div>
-            )}
-          </div>
-        </div>
-      </section>
-    );
-  }
-
-  // ---------------------------------------------------------
-  // Player selection
-  // ---------------------------------------------------------
-
-  function PlayerSelection() {
-    const teamA = selectedTournament?.teams.find(
-      (team) => team.team.id === teamAId,
-    );
-
-    const teamB = selectedTournament?.teams.find(
-      (team) => team.team.id === teamBId,
-    );
-
-    function renderPlayerCard(
-      player: GlobalPlayer,
-      team: "A" | "B",
-    ) {
-      const selected =
-        team === "A"
-          ? matchPlayersA.includes(player.id)
-          : matchPlayersB.includes(player.id);
-
-      const captain =
-        team === "A"
-          ? captainA === player.id
-          : captainB === player.id;
-
-      const viceCaptain =
-        team === "A"
-          ? viceCaptainA === player.id
-          : viceCaptainB === player.id;
-
-      const wicketKeeper =
-        team === "A"
-          ? wicketKeeperA === player.id
-          : wicketKeeperB === player.id;
-
-      return (
-        <div
-          key={player.id}
-          className={`rounded-2xl border p-4 transition ${
-            selected
-              ? "border-emerald-500 bg-emerald-500/10"
-              : "border-slate-700 bg-slate-950 hover:border-slate-600"
-          }`}
-        >
-          <button
-            type="button"
-            onClick={() =>
-              toggleMatchPlayer(team, player.id)
-            }
-            className="flex w-full items-center gap-4 text-left"
-          >
-            <div
-              className={`flex h-11 w-11 shrink-0 items-center justify-center rounded-full border text-sm font-bold ${
-                selected
-                  ? "border-emerald-400 bg-emerald-500 text-slate-950"
-                  : "border-slate-700 bg-slate-900 text-slate-400"
-              }`}
-            >
-              {player.jerseyNumber ??
-                String.fromCharCode(0x2022)}
-            </div>
-
-            <div className="min-w-0 flex-1">
-              <div className="font-semibold">
-                {player.name}
-              </div>
-
-              <div className="mt-1 text-xs text-slate-500">
-                {player.battingStyle ||
-                  "Batting style N/A"}
-                {"  -  "}
-                {player.bowlingStyle ||
-                  "Bowling style N/A"}
-              </div>
-            </div>
-
-            <div
-              className={`h-5 w-5 rounded border ${
-                selected
-                  ? "border-emerald-400 bg-emerald-400"
-                  : "border-slate-600"
-              }`}
-            />
-          </button>
-
-          {selected && (
-            <div className="mt-4 grid grid-cols-3 gap-2">
-              <button
-                type="button"
-                onClick={() => {
-                  if (team === "A") {
-                    setCaptainA(
-                      captain ? "" : player.id,
-                    );
-                  } else {
-                    setCaptainB(
-                      captain ? "" : player.id,
-                    );
-                  }
-                }}
-                className={`rounded-lg px-2 py-2 text-xs font-medium ${
-                  captain
-                    ? "bg-amber-400 text-slate-950"
-                    : "bg-slate-800 text-slate-300"
-                }`}
-              >
-                Captain
-              </button>
-
-              <button
-                type="button"
-                onClick={() => {
-                  if (team === "A") {
-                    setViceCaptainA(
-                      viceCaptain ? "" : player.id,
-                    );
-                  } else {
-                    setViceCaptainB(
-                      viceCaptain ? "" : player.id,
-                    );
-                  }
-                }}
-                className={`rounded-lg px-2 py-2 text-xs font-medium ${
-                  viceCaptain
-                    ? "bg-blue-400 text-slate-950"
-                    : "bg-slate-800 text-slate-300"
-                }`}
-              >
-                Vice
-              </button>
-
-              <button
-                type="button"
-                onClick={() => {
-                  if (team === "A") {
-                    setWicketKeeperA(
-                      wicketKeeper ? "" : player.id,
-                    );
-                  } else {
-                    setWicketKeeperB(
-                      wicketKeeper ? "" : player.id,
-                    );
-                  }
-                }}
-                className={`rounded-lg px-2 py-2 text-xs font-medium ${
-                  wicketKeeper
-                    ? "bg-purple-400 text-slate-950"
-                    : "bg-slate-800 text-slate-300"
-                }`}
-              >
-                WK
-              </button>
-            </div>
-          )}
-        </div>
-      );
-    }
-
-    return (
-      <section>
-        <button
-          type="button"
-          onClick={() => setPageMode("MATCH_SETUP")}
-          className="mb-4 text-sm text-slate-400 hover:text-emerald-400"
-        >
-          {String.fromCharCode(0x2190)} Back to Match Setup
-        </button>
-
-        <h2 className="text-2xl font-semibold">
-          Select Match Players
-        </h2>
-
-        <p className="mt-1 text-sm text-slate-400">
-          Select at least 3 and up to {playersPerTeam} players for each team
-          and assign the captain, vice-captain and
-          wicketkeeper.
-        </p>
-
-        <div className="mt-8 grid gap-6 lg:grid-cols-2">
-          <div className="rounded-3xl border border-slate-800 bg-slate-950 p-5 [color-scheme:dark]">
-            <div className="mb-5 flex items-center justify-between">
-              <div>
-                <h3 className="text-lg font-semibold">
-                  {teamA?.team.name ?? "Team A"}
-                </h3>
-                <p className="text-xs text-slate-500">
-                  {matchPlayersA.length} / {playersPerTeam} players
-                </p>
-              </div>
-              <div
-                className={`rounded-full px-3 py-1 text-xs font-semibold ${
-                  teamASelectionValid
-                    ? "bg-emerald-500/15 text-emerald-400"
-                    : "bg-slate-800 text-slate-400"
-                }`}
-              >
-                {teamASelectionValid
-                  ? "Ready"
-                  : "Incomplete"}
-              </div>
-            </div>
-
-            <div className="space-y-3">
-              {teamAPlayers.length === 0 ? (
-                <p className="py-8 text-center text-sm text-slate-500">
-                  No players available for this team.
-                </p>
-              ) : (
-                teamAPlayers.map((player) =>
-                  renderPlayerCard(player, "A"),
-                )
-              )}
-            </div>
-          </div>
-
-          <div className="rounded-3xl border border-slate-800 bg-slate-950 p-5 [color-scheme:dark]">
-            <div className="mb-5 flex items-center justify-between">
-              <div>
-                <h3 className="text-lg font-semibold">
-                  {teamB?.team.name ?? "Team B"}
-                </h3>
-                <p className="text-xs text-slate-500">
-                  {matchPlayersB.length} / {playersPerTeam} players
-                </p>
-              </div>
-              <div
-                className={`rounded-full px-3 py-1 text-xs font-semibold ${
-                  teamBSelectionValid
-                    ? "bg-emerald-500/15 text-emerald-400"
-                    : "bg-slate-800 text-slate-400"
-                }`}
-              >
-                {teamBSelectionValid
-                  ? "Ready"
-                  : "Incomplete"}
-              </div>
-            </div>
-
-            <div className="space-y-3">
-              {teamBPlayers.length === 0 ? (
-                <p className="py-8 text-center text-sm text-slate-500">
-                  No players available for this team.
-                </p>
-              ) : (
-                teamBPlayers.map((player) =>
-                  renderPlayerCard(player, "B"),
-                )
-              )}
-            </div>
-          </div>
-        </div>
-
-        <div className="mt-8 flex justify-end">
-          <button
-            type="button"
-            onClick={() => void saveMatchPlayers()}
-            disabled={
-              !canSaveMatchPlayers ||
-              loadingMatchPlayers
-            }
-            className="h-12 w-full rounded-xl bg-emerald-500 px-6 font-semibold text-slate-950 transition hover:bg-emerald-400 disabled:cursor-not-allowed disabled:bg-slate-800 disabled:text-slate-500 sm:w-auto"
-          >
-            {loadingMatchPlayers
-              ? "Saving Players..."
-              : "Continue to Opening Players >"}
-          </button>
-        </div>
-      </section>
-    );
-  }
-
-  // ---------------------------------------------------------
-  // Opening Players
-  // ---------------------------------------------------------
-
-  function OpeningPlayers() {
-  const teamA = selectedTournament?.teams.find(
-    (team) => team.team.id === teamAId,
-  );
-
-  const teamB = selectedTournament?.teams.find(
-    (team) => team.team.id === teamBId,
-  );
-
-  // ---------------------------------------------------------
-  // Determine who bats first from the toss.
-  //
-  // BAT:
-  //   toss winner bats
-  //
-  // BOWL:
-  //   toss winner bowls, therefore the other team bats
-  // ---------------------------------------------------------
-
-  const inningsOneBattingTeamId =
-    tossWinnerId && tossDecision === "BAT"
-      ? tossWinnerId
-      : tossWinnerId && tossDecision === "BOWL"
-        ? tossWinnerId === teamAId
-          ? teamBId
-          : teamAId
-        : "";
-
-  const inningsOneBowlingTeamId =
-    inningsOneBattingTeamId === teamAId
-      ? teamBId
-      : inningsOneBattingTeamId === teamBId
-        ? teamAId
-        : "";
-
-  const battingTeam =
-    inningsOneBattingTeamId === teamAId
-      ? teamA
-      : inningsOneBattingTeamId === teamBId
-        ? teamB
-        : undefined;
-
-  const bowlingTeam =
-    inningsOneBowlingTeamId === teamAId
-      ? teamA
-      : inningsOneBowlingTeamId === teamBId
-        ? teamB
-        : undefined;
-
-  const battingPlayers =
-    inningsOneBattingTeamId === teamAId
-      ? teamAPlayers
-      : inningsOneBattingTeamId === teamBId
-        ? teamBPlayers
-        : [];
-
-  const bowlingPlayers =
-    inningsOneBowlingTeamId === teamAId
-      ? teamAPlayers
-      : inningsOneBowlingTeamId === teamBId
-        ? teamBPlayers
-        : [];
-
-  const selectedStriker = battingPlayers.find(
-    (player) => player.id === openingStrikerId,
-  );
-
-  const selectedNonStriker = battingPlayers.find(
-    (player) => player.id === openingNonStrikerId,
-  );
-
-  const selectedBowlerA = bowlingPlayers.find(
-    (player) => player.id === openingBowlerAId,
-  );
-
-  const selectedBowlerB = bowlingPlayers.find(
-    (player) => player.id === openingBowlerBId,
-  );
-
-  return (
-    <section>
-      <button
-        type="button"
-        onClick={() => setPageMode("PLAYER_SELECTION")}
-        className="mb-4 text-sm text-slate-400 hover:text-emerald-400"
-      >
-        {String.fromCharCode(0x2190)} Back to Match Players
-      </button>
-
-      <div className="mb-8">
-        <p className="text-sm font-medium text-emerald-400">
-          Innings 1
-        </p>
-
-        <h2 className="mt-1 text-2xl font-semibold">
-          Opening Players
-        </h2>
-
-        <p className="mt-1 text-sm text-slate-400">
-          Choose the two opening batsmen and the two opening bowlers
-          before starting the innings.
-        </p>
-      </div>
-
-      {/* ----------------------------------------------------- */}
-      {/* Toss summary                                          */}
-      {/* ----------------------------------------------------- */}
-
-      <div className="mb-5 rounded-2xl border border-slate-800 bg-slate-950 p-4">
-        <div className="flex flex-wrap items-center justify-between gap-4">
-          <div>
-            <p className="text-xs uppercase tracking-wider text-slate-500">
-              Toss
-            </p>
-
-            <p className="mt-1 font-semibold text-slate-100">
-              {tossWinnerId === teamAId
-                ? teamA?.team.name
-                : tossWinnerId === teamBId
-                  ? teamB?.team.name
-                  : "Toss winner not selected"}
-              {tossWinnerId && tossDecision
-                ? ` elected to ${
-                    tossDecision === "BAT" ? "bat" : "bowl"
-                  }`
-                : ""}
-            </p>
-          </div>
-
-          <div className="grid grid-cols-2 gap-3 text-center">
-            <div className="rounded-xl bg-emerald-500/10 px-4 py-3">
-              <p className="text-xs text-slate-500">Batting</p>
-              <p className="mt-1 font-semibold text-emerald-400">
-                {battingTeam?.team.name ?? "-"}
-              </p>
-            </div>
-
-            <div className="rounded-xl bg-blue-500/10 px-4 py-3">
-              <p className="text-xs text-slate-500">Bowling</p>
-              <p className="mt-1 font-semibold text-blue-400">
-                {bowlingTeam?.team.name ?? "-"}
-              </p>
-            </div>
-          </div>
-        </div>
-      </div>
-
-      <div className="grid gap-5 lg:grid-cols-2">
-        {/* --------------------------------------------------- */}
-        {/* BATTING                                             */}
-        {/* --------------------------------------------------- */}
-
-        <div className="rounded-3xl border border-slate-800 bg-slate-950 p-5 [color-scheme:dark]">
-          <div className="mb-5">
-            <p className="text-xs font-medium uppercase tracking-wider text-emerald-400">
-              Batting
-            </p>
-
-            <h3 className="mt-1 text-xl font-semibold">
-              {battingTeam?.team.name ?? "Batting Team"}
-            </h3>
-          </div>
-
-          <div className="space-y-5">
-            {/* Striker */}
-            <div>
-              <label
-                htmlFor="openingStriker"
-                className="mb-2 block text-sm font-medium text-slate-300"
-              >
-                Striker
-              </label>
-
-              <select
-                id="openingStriker"
-                value={openingStrikerId}
-                onChange={(event) => {
-                  const value = event.target.value;
-
-                  setOpeningStrikerId(value);
-
-                  if (value === openingNonStrikerId) {
-                    setOpeningNonStrikerId("");
-                  }
-                }}
-                className="h-12 w-full rounded-xl border border-slate-700 bg-slate-900 px-4 text-white outline-none transition focus:border-emerald-500 [color-scheme:dark]"
-              >
-                <option value="">Select striker</option>
-
-                {battingPlayers.map((player) => (
-                  <option key={player.id} value={player.id}>
-                    {player.jerseyNumber !== null &&
-                    player.jerseyNumber !== undefined
-                      ? `#${player.jerseyNumber} `
-                      : ""}
-                    {player.name}
-                  </option>
-                ))}
-              </select>
-            </div>
-
-            {/* Non-striker */}
-            <div>
-              <label
-                htmlFor="openingNonStriker"
-                className="mb-2 block text-sm font-medium text-slate-300"
-              >
-                Non-striker
-              </label>
-
-              <select
-                id="openingNonStriker"
-                value={openingNonStrikerId}
-                onChange={(event) =>
-                  setOpeningNonStrikerId(event.target.value)
-                }
-                className="h-12 w-full rounded-xl border border-slate-700 bg-slate-900 px-4 text-white outline-none transition focus:border-emerald-500 [color-scheme:dark]"
-              >
-                <option value="">Select non-striker</option>
-
-                {battingPlayers.map((player) => (
-                  <option
-                    key={player.id}
-                    value={player.id}
-                    disabled={player.id === openingStrikerId}
-                  >
-                    {player.jerseyNumber !== null &&
-                    player.jerseyNumber !== undefined
-                      ? `#${player.jerseyNumber} `
-                      : ""}
-                    {player.name}
-                  </option>
-                ))}
-              </select>
-            </div>
-          </div>
-
-          <div className="mt-5 rounded-2xl border border-slate-800 bg-slate-900 p-4">
-            <p className="text-xs uppercase tracking-wider text-slate-500">
-              Opening pair
-            </p>
-
-            <div className="mt-2 grid grid-cols-2 gap-3">
-              <div className="rounded-xl bg-slate-950 p-3">
-                <p className="text-xs text-slate-500">
-                  Striker
-                </p>
-
-                <p className="mt-1 truncate font-semibold text-slate-200">
-                  {selectedStriker?.name ?? "Not selected"}
-                </p>
-              </div>
-
-              <div className="rounded-xl bg-slate-950 p-3">
-                <p className="text-xs text-slate-500">
-                  Non-striker
-                </p>
-
-                <p className="mt-1 truncate font-semibold text-slate-200">
-                  {selectedNonStriker?.name ?? "Not selected"}
-                </p>
-              </div>
-            </div>
-          </div>
-        </div>
-
-        {/* --------------------------------------------------- */}
-        {/* BOWLING                                             */}
-        {/* --------------------------------------------------- */}
-
-        <div className="rounded-3xl border border-slate-800 bg-slate-950 p-5 [color-scheme:dark]">
-          <div className="mb-5">
-            <p className="text-xs font-medium uppercase tracking-wider text-blue-400">
-              Bowling
-            </p>
-
-            <h3 className="mt-1 text-xl font-semibold">
-              {bowlingTeam?.team.name ?? "Bowling Team"}
-            </h3>
-          </div>
-
-          <div className="space-y-5">
-            {/* Bowler A */}
-            <div>
-              <label
-                htmlFor="openingBowlerA"
-                className="mb-2 block text-sm font-medium text-slate-300"
-              >
-                Bowler A
-              </label>
-
-              <select
-                id="openingBowlerA"
-                value={openingBowlerAId}
-                onChange={(event) => {
-                  const value = event.target.value;
-
-                  setOpeningBowlerAId(value);
-
-                  if (value === openingBowlerBId) {
-                    setOpeningBowlerBId("");
-                  }
-                }}
-                className="h-12 w-full rounded-xl border border-slate-700 bg-slate-900 px-4 text-white outline-none transition focus:border-blue-500 [color-scheme:dark]"
-              >
-                <option value="">Select bowler A</option>
-
-                {bowlingPlayers.map((player) => (
-                  <option key={player.id} value={player.id}>
-                    {player.jerseyNumber !== null &&
-                    player.jerseyNumber !== undefined
-                      ? `#${player.jerseyNumber} `
-                      : ""}
-                    {player.name}
-                  </option>
-                ))}
-              </select>
-            </div>
-
-            {/* Bowler B */}
-            <div>
-              <label
-                htmlFor="openingBowlerB"
-                className="mb-2 block text-sm font-medium text-slate-300"
-              >
-                Bowler B
-              </label>
-
-              <select
-                id="openingBowlerB"
-                value={openingBowlerBId}
-                onChange={(event) =>
-                  setOpeningBowlerBId(event.target.value)
-                }
-                className="h-12 w-full rounded-xl border border-slate-700 bg-slate-900 px-4 text-white outline-none transition focus:border-blue-500 [color-scheme:dark]"
-              >
-                <option value="">Select bowler B</option>
-
-                {bowlingPlayers.map((player) => (
-                  <option
-                    key={player.id}
-                    value={player.id}
-                    disabled={player.id === openingBowlerAId}
-                  >
-                    {player.jerseyNumber !== null &&
-                    player.jerseyNumber !== undefined
-                      ? `#${player.jerseyNumber} `
-                      : ""}
-                    {player.name}
-                  </option>
-                ))}
-              </select>
-            </div>
-          </div>
-
-          <div className="mt-5 rounded-2xl border border-slate-800 bg-slate-900 p-4">
-            <p className="text-xs uppercase tracking-wider text-slate-500">
-              Opening bowlers
-            </p>
-
-            <div className="mt-2 grid grid-cols-2 gap-3">
-              <div className="rounded-xl bg-slate-950 p-3">
-                <p className="text-xs text-slate-500">
-                  Bowler A
-                </p>
-
-                <p className="mt-1 truncate font-semibold text-slate-200">
-                  {selectedBowlerA?.name ?? "Not selected"}
-                </p>
-              </div>
-
-              <div className="rounded-xl bg-slate-950 p-3">
-                <p className="text-xs text-slate-500">
-                  Bowler B
-                </p>
-
-                <p className="mt-1 truncate font-semibold text-slate-200">
-                  {selectedBowlerB?.name ?? "Not selected"}
-                </p>
-              </div>
-            </div>
-          </div>
-
-          {bowlingMode === "DOUBLE" && (
-            <div className="mt-4 rounded-2xl border border-blue-500/20 bg-blue-500/5 p-4">
-              <p className="text-sm font-medium text-blue-300">
-                Double Bowler mode
-              </p>
-
-              <p className="mt-1 text-xs text-slate-400">
-                The two selected bowlers will alternate every
-                delivery.
-              </p>
-            </div>
-          )}
-        </div>
-      </div>
-
-      {/* ----------------------------------------------------- */}
-      {/* ACTIONS                                               */}
-      {/* ----------------------------------------------------- */}
-
-      <div className="mt-6 flex items-center justify-end gap-3">
-        <button
-          type="button"
-          onClick={() => setPageMode("PLAYER_SELECTION")}
-          className="rounded-xl border border-slate-700 px-5 py-3 text-sm font-medium text-slate-300 transition hover:border-slate-500 hover:bg-slate-900"
-        >
-          Back
-        </button>
-
-        <button
-          type="button"
-          onClick={() => void startFirstInnings()}
-          disabled={!openingPlayersReady || loadingStartInnings}
-          className="rounded-xl bg-emerald-500 px-6 py-3 text-sm font-semibold text-slate-950 transition hover:bg-emerald-400 disabled:cursor-not-allowed disabled:bg-slate-800 disabled:text-slate-500"
-        >
-          {loadingStartInnings
-            ? "Starting Innings..."
-            : "Start Innings >"}
-        </button>
-      </div>
-    </section>
-  );
-}
-
-  // ---------------------------------------------------------
-  // Match setup
-  // ---------------------------------------------------------
-
-  function MatchSetup() {
-    return (
-      <section>
-        <div className="mb-8">
-          <button
-            type="button"
-            onClick={backToDashboard}
-            className="mb-4 text-sm text-slate-400 hover:text-emerald-400"
-          >
-            {String.fromCharCode(0x2190)} Back to Tournament
-          </button>
-
-          <h2 className="text-xl font-semibold">
-            Create Match
-          </h2>
-
-          <p className="mt-1 text-sm text-slate-400">
-            Configure the match before selecting the
-            players.
-          </p>
-
-          {selectedTournament && (
-            <div className="mt-4 inline-flex rounded-xl border border-emerald-500/20 bg-emerald-500/10 px-3 py-2 text-sm text
--emerald-400 [color-scheme:dark]">
-              {String.fromCodePoint(0x1F3C6)} {selectedTournament.name}
-            </div>
-          )}
-        </div>
-
-        {/* Teams */}
-        <div className="grid gap-5 md:grid-cols-2">
-          <div>
-            <label
-              htmlFor="teamA"
-              className="mb-2 block text-sm font-medium text-slate-300 [color-scheme:dark]"
-            >
-              Team A
-            </label>
-
-            <select
-              id="teamA"
-              value={teamAId}
-              onChange={(event) => {
-                const value = event.target.value;
-                setTeamAId(value);
-                if (value === teamBId) {
-                  setTeamBId("");
-                }
-              }}
-              className="h-12 w-full rounded-xl border border-slate-700 bg-slate-950 px-4 text-white outline-none transition focus:border-emerald-500 focus:ring-2 focus:ring-emerald-500/20 [color-scheme:dark]"
-            >
-              <option value="">Select Team A</option>
-              {selectedTournament?.teams.map((tournamentTeam) => (
-                <option
-                  key={tournamentTeam.team.id}
-                  value={tournamentTeam.team.id}
-                >
-                  {tournamentTeam.team.name}
-                </option>
-              ))}
-            </select>
-          </div>
-
-          <div>
-            <label
-              htmlFor="teamB"
-              className="mb-2 block text-sm font-medium text-slate-300 [color-scheme:dark]"
-            >
-              Team B
-            </label>
-
-            <select
-              id="teamB"
-              value={teamBId}
-              onChange={(event) => setTeamBId(event.target.value)}
-              className="h-12 w-full rounded-xl border border-slate-700 bg-slate-950 px-4 text-white outline-none transition focus:border-emerald-500 focus:ring-2 focus:ring-emerald-500/20 [color-scheme:dark]"
-            >
-              <option value="">Select Team B</option>
-              {selectedTournament?.teams.map((tournamentTeam) => (
-                <option
-                  key={tournamentTeam.team.id}
-                  value={tournamentTeam.team.id}
-                  disabled={tournamentTeam.team.id === teamAId}
-                >
-                  {tournamentTeam.team.name}
-                </option>
-              ))}
-            </select>
-          </div>
-        </div>
-
-        {teamAId && teamBId && teamAId === teamBId && (
-          <p className="mt-3 text-sm text-red-400">
-            Team A and Team B must be different.
-          </p>
-        )}
-
-        {/* Configuration */}
-        <div className="mt-8 grid gap-5 sm:grid-cols-2 lg:grid-cols-3">
-          <div>
-            <label
-              htmlFor="players"
-              className="mb-2 block text-sm font-medium text-slate-300 [color-scheme:dark]"
-            >
-              Players per team
-            </label>
-
-            <select
-              id="players"
-              value={playersPerTeam}
-              onChange={(event) =>
-                setPlayersPerTeam(
-                  Number(event.target.value),
-                )
-              }
-              className="h-12 w-full rounded-xl border border-slate-700 bg-slate-950 px-4 text-white outline-none focus:borde
-r-emerald-500 [color-scheme:dark]"
-            >
-              {playersOptions.map((count) => (
-                <option
-                  key={count}
-                  value={count}
-                >
-                  {count}
-                </option>
-              ))}
-            </select>
-          </div>
-
-          <div>
-            <label
-              htmlFor="overs"
-              className="mb-2 block text-sm font-medium text-slate-300 [color-scheme:dark]"
-            >
-              Overs per innings
-            </label>
-
-            <input
-              id="overs"
-              type="number"
-              min={2}
-              max={50}
-              step={1}
-              value={oversInput}
-              onChange={(event) =>
-                handleOversChange(
-                  event.target.value,
-                )
-              }
-              onBlur={handleOversBlur}
-              className="h-12 w-full rounded-xl border border-slate-700 bg-slate-950 px-4 text-white outline-none transition 
-focus:border-emerald-500 focus:ring-2 focus:ring-emerald-500/20"
-            />
-
-            <p className="mt-2 text-xs text-slate-500">
-              Enter 2{String.fromCharCode(0x2013)}50 overs
-            </p>
-          </div>
-
-          <div>
-            <label
-              htmlFor="innings"
-              className="mb-2 block text-sm font-medium text-slate-300 [color-scheme:dark]"
-            >
-              Match format
-            </label>
-
-            <select
-              id="innings"
-              value={inningsPerMatch}
-              onChange={(event) =>
-                setInningsPerMatch(
-                  Number(
-                    event.target.value,
-                  ) as InningsMode,
-                )
-              }
-              className="h-12 w-full rounded-xl border border-slate-700 bg-slate-950 px-4 text-white outline-none focus:borde
-r-emerald-500 [color-scheme:dark]"
-            >
-              <option value={2}>
-                2 innings
-              </option>
-
-              <option value={4}>
-                4 innings
-              </option>
-            </select>
-          </div>
-        </div>
-
-        {/* Toss */}
-        <div className="mt-8 rounded-2xl border border-slate-700 bg-slate-950/70 p-5">
-          <div className="mb-4">
-            <h3 className="text-sm font-medium text-slate-300">
-              Toss
-            </h3>
-            <p className="mt-1 text-xs text-slate-500">
-              Record who won the toss and what they elected to do.
-            </p>
-          </div>
-
-          <div className="grid gap-4 md:grid-cols-2">
-            <div>
-              <label htmlFor="tossWinner" className="mb-2 block text-xs font-medium uppercase tracking-wider text-slate-500">
-                Toss Winner
-              </label>
-              <select
-                id="tossWinner"
-                value={tossWinnerId}
-                onChange={(event) => setTossWinnerId(event.target.value)}
-                disabled={!teamAId || !teamBId}
-                className="h-12 w-full rounded-xl border border-slate-700 bg-slate-950 px-4 text-white outline-none focus:border-emerald-500 [color-scheme:dark]"
-              >
-                <option value="" className="bg-slate-950 text-white">Select toss winner</option>
-                {teamAId && (
-                  <option value={teamAId} className="bg-slate-950 text-white">
-                    {selectedTournament?.teams.find((item) => item.team.id === teamAId)?.team.name ?? "Team A"}
-                  </option>
-                )}
-                {teamBId && (
-                  <option value={teamBId} className="bg-slate-950 text-white">
-                    {selectedTournament?.teams.find((item) => item.team.id === teamBId)?.team.name ?? "Team B"}
-                  </option>
-                )}
-              </select>
-            </div>
-
-            <div>
-              <label htmlFor="tossDecision" className="mb-2 block text-xs font-medium uppercase tracking-wider text-slate-500">
-                Decision
-              </label>
-              <select
-                id="tossDecision"
-                value={tossDecision}
-                onChange={(event) => setTossDecision(event.target.value as "BAT" | "BOWL")}
-                disabled={!tossWinnerId}
-                className="h-12 w-full rounded-xl border border-slate-700 bg-slate-950 px-4 text-white outline-none focus:border-emerald-500 [color-scheme:dark]"
-              >
-                <option value="BAT" className="bg-slate-950 text-white">Elected to bat</option>
-                <option value="BOWL" className="bg-slate-950 text-white">Elected to bowl</option>
-              </select>
-            </div>
-          </div>
-
-          {tossWinnerId && (
-            <div className="mt-4 rounded-xl border border-emerald-500/20 bg-emerald-500/10 px-4 py-3 text-sm text-emerald-300">
-              <span className="font-semibold">
-                {selectedTournament?.teams.find((item) => item.team.id === tossWinnerId)?.team.name ?? "Selected team"}
-              </span>{" "}
-              won the toss and elected to{" "}
-              <span className="font-semibold">
-                {tossDecision === "BAT" ? "bat" : "bowl"}.
-              </span>
-            </div>
-          )}
-        </div>
-
-        {/* Bowling mode */}
-        <div className="mt-8">
-          <div className="mb-3">
-            <h3 className="text-sm font-medium text-slate-300 [color-scheme:dark]">
-              Bowling Mode
-            </h3>
-
-            <p className="mt-1 text-xs text-slate-500">
-              Normal mode does not use odd-over
-              settings.
-            </p>
-          </div>
-
-          <div className="grid gap-4 md:grid-cols-2">
-            <button
-              type="button"
-              onClick={() =>
-                setBowlingMode("NORMAL")
-              }
-              className={`rounded-2xl border p-5 text-left transition ${
-                bowlingMode === "NORMAL"
-                  ? "border-emerald-500 bg-emerald-500/10 ring-2 ring-emerald-500/20"
-                  : "border-slate-700 bg-slate-950 hover:border-slate-600"
-              }`}
-            >
-              <div className="flex items-start justify-between">
-                <div>
-                  <div className="text-lg font-semibold">
-                    Normal
-                  </div>
-
-                  <p className="mt-2 text-sm leading-6 text-slate-400">
-                    Different bowler for each over,
-                    following normal cricket rules.
-                  </p>
-                </div>
-
-                <div
-                  className={`mt-1 h-5 w-5 rounded-full border-2 ${
-                    bowlingMode === "NORMAL"
-                      ? "border-emerald-400 bg-emerald-400"
-                      : "border-slate-600"
-                  }`}
-                />
-              </div>
-
-              <div className="mt-4 rounded-xl bg-slate-900 px-3 py-2 font-mono text-xs text-slate-400">
-                Over 1 {String.fromCharCode(0x2192)} A&nbsp;&nbsp; Over 2 {String.fromCharCode(0x2192)} B
-                <br />
-                Over 3 {String.fromCharCode(0x2192)} A&nbsp;&nbsp; Over 4 {String.fromCharCode(0x2192)} B
-              </div>
-            </button>
-
-            <button
-              type="button"
-              onClick={() =>
-                setBowlingMode("DOUBLE")
-              }
-              className={`rounded-2xl border p-5 text-left transition ${
-                bowlingMode === "DOUBLE"
-                  ? "border-emerald-500 bg-emerald-500/10 ring-2 ring-emerald-500/20"
-                  : "border-slate-700 bg-slate-950 hover:border-slate-600"
-              }`}
-            >
-              <div className="flex items-start justify-between">
-                <div>
-                  <div className="text-lg font-semibold">
-                    Double
-                  </div>
-
-                  <p className="mt-2 text-sm leading-6 text-slate-400">
-                    Two bowlers alternate every ball.
-                  </p>
-                </div>
-
-                <div
-                  className={`mt-1 h-5 w-5 rounded-full border-2 ${
-                    bowlingMode === "DOUBLE"
-                      ? "border-emerald-400 bg-emerald-400"
-                      : "border-slate-600"
-                  }`}
-                />
-              </div>
-
-              <div className="mt-4 rounded-xl bg-slate-900 px-3 py-2 font-mono text-xs text-slate-400">
-                Ball 1 {String.fromCharCode(0x2192)} A&nbsp;&nbsp; Ball 2 {String.fromCharCode(0x2192)} B
-                <br />
-                Ball 3 {String.fromCharCode(0x2192)} A&nbsp;&nbsp; Ball 4 {String.fromCharCode(0x2192)} B
-              </div>
-            </button>
-          </div>
-        </div>
-
-        {/* Player information */}
-        <div className="mt-8 rounded-2xl border border-slate-800 bg-slate-950/70 p-4 [color-scheme:dark]">
-          <div className="flex gap-3">
-            <span className="text-lg">
-              {String.fromCodePoint(0x2139, 0xFE0F)}
-            </span>
-
-            <div>
-              <p className="text-sm font-medium text-slate-300 [color-scheme:dark]">
-                Player selection comes next
-              </p>
-
-              <p className="mt-1 text-xs leading-5 text-slate-500">
-                After continuing, you&apos;ll select
-                the match players, opening batsmen and
-                opening bowler(s). Additional eligible
-                players can be added later during the
-                match.
-              </p>
-            </div>
-          </div>
-        </div>
-
-        <div className="mt-8 flex justify-end">
-          <button
-            type="button"
-            onClick={() => void handleMatchContinue()}
-            disabled={!canContinue || loadingMatchCreate}
-            className="h-12 w-full rounded-xl bg-emerald-500 px-6 font-semibold text-slate-950 transition hover:bg-emerald-400 disabled:cursor-not-allowed disabled:bg-slate-800 disabled:text-slate-500 sm:w-auto"
-          >
-            {loadingMatchCreate
-              ? "Creating Match..."
-              : `Continue to Player Selection ${String.fromCharCode(0x2192)}`}
-          </button>
-        </div>
-      </section>
-    );
-  }
-
-  // ---------------------------------------------------------
   // Main
   // ---------------------------------------------------------
 
@@ -6224,9 +3864,17 @@ r-emerald-500 [color-scheme:dark]"
       : "mx-auto flex min-h-screen w-full max-w-5xl flex-col px-5 py-8 sm:px-8"
   }
 >
-        <Header />
+        <Header
+          appName={APP_NAME}
+          selectedTournament={selectedTournament}
+          pageMode={pageMode}
+          goBackToTournaments={goBackToTournaments}
+          liveRefreshLoading={liveRefreshLoading}
+          refreshLiveInnings={refreshLiveInnings}
+          handleSecretLogoTap={handleSecretLogoTap}
+        />
 
-        <ErrorBanner />
+        <ErrorBanner error={error} />
 
         <section className="flex-1">
           <div className={
@@ -6235,23 +3883,135 @@ r-emerald-500 [color-scheme:dark]"
               : "rounded-3xl border border-slate-800 bg-slate-900 p-5 shadow-2xl sm:p-8"
           }>
             {pageMode === "TOURNAMENTS" && (
-              <TournamentList />
+              <TournamentList
+                tournaments={tournaments}
+                loadingTournaments={loadingTournaments}
+                formatLabels={formatLabels}
+                openTournament={openTournament}
+                setShowCreateTournament={setShowCreateTournament}
+                setError={setError}
+              />
             )}
 
-            {pageMode === "DASHBOARD" && (
-              <TournamentDashboard />
+            {pageMode === "DASHBOARD" && selectedTournament && (
+              <TournamentDashboard
+                selectedTournament={selectedTournament}
+                selectedTeamId={selectedTeamId}
+                teamPlayers={teamPlayers}
+                liveMatches={liveMatches}
+                completedMatches={completedMatches}
+                loadingLiveMatches={loadingLiveMatches}
+                loadingCompletedMatches={loadingCompletedMatches}
+                expandedMatchId={expandedMatchId}
+                loadingScorecard={loadingScorecard}
+                formatLabels={formatLabels}
+                openMatchSetup={openMatchSetup}
+                openAddTeamModal={openAddTeamModal}
+                selectTeam={selectTeam}
+                removeTeamFromCurrentTournament={removeTeamFromCurrentTournament}
+                openAddPlayerModal={openAddPlayerModal}
+                setEditingPlayerId={setEditingPlayerId}
+                setPlayerName={setPlayerName}
+                setPlayerJerseyNumber={setPlayerJerseyNumber}
+                setPlayerBattingStyle={setPlayerBattingStyle}
+                setPlayerBowlingStyle={setPlayerBowlingStyle}
+                setShowAddPlayer={setShowAddPlayer}
+                removePlayerFromCurrentRoster={removePlayerFromCurrentRoster}
+                loadLiveMatches={loadLiveMatches}
+                loadCompletedMatches={loadCompletedMatches}
+                setExpandedMatchId={setExpandedMatchId}
+                openScorecard={openScorecard}
+                resumeMatch={resumeMatch}
+                resumingMatchId={resumingMatchId}
+              />
             )}
 
             {pageMode === "MATCH_SETUP" && (
-              <MatchSetup />
+              <MatchSetup
+                selectedTournament={selectedTournament}
+                teamAId={teamAId}
+                setTeamAId={setTeamAId}
+                teamBId={teamBId}
+                setTeamBId={setTeamBId}
+                playersPerTeam={playersPerTeam}
+                setPlayersPerTeam={setPlayersPerTeam}
+                playersOptions={playersOptions}
+                oversInput={oversInput}
+                handleOversChange={handleOversChange}
+                handleOversBlur={handleOversBlur}
+                inningsPerMatch={inningsPerMatch}
+                setInningsPerMatch={setInningsPerMatch}
+                tossWinnerId={tossWinnerId}
+                setTossWinnerId={setTossWinnerId}
+                tossDecision={tossDecision}
+                setTossDecision={setTossDecision}
+                bowlingMode={bowlingMode}
+                setBowlingMode={setBowlingMode}
+                canContinue={canContinue}
+                loadingMatchCreate={loadingMatchCreate}
+                handleMatchContinue={handleMatchContinue}
+                backToDashboard={backToDashboard}
+              />
             )}
 
             {pageMode === "PLAYER_SELECTION" && (
-              <PlayerSelection />
+              <PlayerSelection
+                  selectedTournament={selectedTournament}
+                  teamAId={teamAId}
+                  teamBId={teamBId}
+                  matchPlayersA={matchPlayersA}
+                  matchPlayersB={matchPlayersB}
+                  captainA={captainA}
+                  captainB={captainB}
+                  viceCaptainA={viceCaptainA}
+                  viceCaptainB={viceCaptainB}
+                  wicketKeeperA={wicketKeeperA}
+                  wicketKeeperB={wicketKeeperB}
+                  teamAPlayers={teamAPlayers}
+                  teamBPlayers={teamBPlayers}
+                  playersPerTeam={playersPerTeam}
+                  teamASelectionValid={teamASelectionValid}
+                  teamBSelectionValid={teamBSelectionValid}
+                  canSaveMatchPlayers={canSaveMatchPlayers}
+                  loadingMatchPlayers={loadingMatchPlayers}
+                  setMatchPlayersA={setMatchPlayersA}
+                  setMatchPlayersB={setMatchPlayersB}
+                  setCaptainA={setCaptainA}
+                  setCaptainB={setCaptainB}
+                  setViceCaptainA={setViceCaptainA}
+                  setViceCaptainB={setViceCaptainB}
+                  setWicketKeeperA={setWicketKeeperA}
+                  setWicketKeeperB={setWicketKeeperB}
+                  setPageMode={setPageMode}
+                  saveMatchPlayers={saveMatchPlayers}
+                  toggleMatchPlayer={toggleMatchPlayer}                />
             )}
 
             {pageMode === "OPENING_PLAYERS" && (
-              <OpeningPlayers />
+              <OpeningPlayers
+                  selectedTournament={selectedTournament}
+                  teamAId={teamAId}
+                  teamBId={teamBId}
+                  matchPlayersA={matchPlayersA}
+                  matchPlayersB={matchPlayersB}
+                  openingStrikerId={openingStrikerId}
+                  openingNonStrikerId={openingNonStrikerId}
+                  openingBowlerAId={openingBowlerAId}
+                  openingBowlerBId={openingBowlerBId}
+                  loadingStartInnings={loadingStartInnings}
+                  openingPlayersReady={openingPlayersReady}
+                  bowlingMode={bowlingMode}
+                  tossWinnerId={tossWinnerId}
+                  tossDecision={tossDecision}
+                  teamAPlayers={teamAPlayers}
+                  teamBPlayers={teamBPlayers}
+                  setOpeningStrikerId={setOpeningStrikerId}
+                  setOpeningNonStrikerId={setOpeningNonStrikerId}
+                  setOpeningBowlerAId={setOpeningBowlerAId}
+                  setOpeningBowlerBId={setOpeningBowlerBId}
+                  setPageMode={setPageMode}
+                  startFirstInnings={startFirstInnings}
+                />
             )}
 
             {pageMode === "LIVE_SCORING" && (
@@ -6264,140 +4024,110 @@ r-emerald-500 [color-scheme:dark]"
           {APP_NAME}
         </footer>
       </div>
+      <ScorecardModal
+        scorecardMatch={scorecardMatch}
+        selectedTournament={selectedTournament}
+        exportScorecardPdf={exportScorecardPdf}
+        setScorecardMatch={setScorecardMatch}
+/>
+      <CreateTournamentModal
+        showCreateTournament={showCreateTournament}
+        loadingCreate={loadingCreate}
+        tournamentName={tournamentName}
+        tournamentSeason={tournamentSeason}
+        tournamentFormat={tournamentFormat}
+        setTournamentName={setTournamentName}
+        setTournamentSeason={setTournamentSeason}
+        setTournamentFormat={setTournamentFormat}
+        setShowCreateTournament={setShowCreateTournament}
+        setError={setError}
+        createTournament={() => void createTournament()}
+      />
+      <ManagementModal
+  selectedTeam={selectedTournament?.teams.find(
+    (tournamentTeam) => tournamentTeam.team.id === selectedTeamId,
+  )?.team ?? null}
+  teamPlayers={teamPlayers}
+  availablePlayers={availablePlayers}
+  showAddPlayer={showAddPlayer}
+  editingPlayerId={editingPlayerId}
+  addPlayerMode={addPlayerMode}
+  selectedExistingPlayerId={selectedExistingPlayerId}
+  loadingAvailablePlayers={loadingAvailablePlayers}
+  playerName={playerName}
+  playerJerseyNumber={playerJerseyNumber}
+  playerBattingStyle={playerBattingStyle}
+  playerBowlingStyle={playerBowlingStyle}
+  loadingPlayerCreate={loadingPlayerCreate}
+  loadingPlayerUpdate={loadingPlayerUpdate}
+  setShowAddPlayer={setShowAddPlayer}
+  setEditingPlayerId={setEditingPlayerId}
+  setSelectedExistingPlayerId={setSelectedExistingPlayerId}
+  setAddPlayerMode={setAddPlayerMode}
+  setPlayerName={setPlayerName}
+  setPlayerJerseyNumber={setPlayerJerseyNumber}
+  setPlayerBattingStyle={setPlayerBattingStyle}
+  setPlayerBowlingStyle={setPlayerBowlingStyle}
+  setError={setError}
+  resetPlayerForm={resetPlayerForm}
+  loadAvailablePlayers={loadAvailablePlayers}
+  addExistingPlayerToTeam={addExistingPlayerToTeam}
+  createPlayerForTeam={createPlayerForTeam}
+  updatePlayerForTeam={updatePlayerForTeam}
+  showAddTeam={showAddTeam}
+  selectedTournament={selectedTournament}
+  globalTeams={globalTeams}
+  loadingGlobalTeams={loadingGlobalTeams}
+  addTeamMode={addTeamMode}
+  selectedExistingTeamId={selectedExistingTeamId}
+  teamName={teamName}
+  teamShortName={teamShortName}
+  loadingTeamCreate={loadingTeamCreate}
+  setAddTeamMode={setAddTeamMode}
+  setSelectedExistingTeamId={setSelectedExistingTeamId}
+  setTeamName={setTeamName}
+  setTeamShortName={setTeamShortName}
+  setShowAddTeam={setShowAddTeam}
+  addExistingTeamToTournament={addExistingTeamToTournament}
+  createTeam={createTeam}
+/>
 
-      {scorecardMatch && (
-        <div className="scorecard-print-root fixed inset-0 z-[80] overflow-y-auto bg-black/70 p-3 backdrop-blur-sm sm:p-6">
-          <div className="mx-auto my-2 w-full max-w-6xl rounded-2xl border border-slate-300 bg-white p-4 text-slate-900 shadow-2xl sm:my-4 sm:p-6 [color-scheme:light]">
-            {(() => {
-              const match = scorecardMatch;
-              const teamName = (id: string) => id === match.teamA.id ? match.teamA.name : match.teamB.name;
-              const teamShortName = (id: string) => id === match.teamA.id ? (match.teamA.shortName ?? match.teamA.name) : (match.teamB.shortName ?? match.teamB.name);
-              const playerName = (id: string) => match.players.find((item) => item.playerId === id)?.player.name ?? "Player";
-              const dismissalText = (wicket: NonNullable<(typeof match.innings)[number]["deliveries"][number]["wicket"]>) => {
-                const bowler = wicket.bowlerId ? playerName(wicket.bowlerId) : "Bowler";
-                const fielder = wicket.fielderId ? playerName(wicket.fielderId) : "";
-                switch (wicket.type) {
-                  case "BOWLED": return `b ${bowler}`;
-                  case "CAUGHT": return fielder ? `c ${fielder}\u00a0\u00a0\u00a0b ${bowler}` : `c b ${bowler}`;
-                  case "LBW": return `lbw b ${bowler}`;
-                  case "RUN_OUT": return fielder ? `run out (${fielder})` : "run out";
-                  case "STUMPED": return fielder ? `st ${fielder}\u00a0\u00a0\u00a0b ${bowler}` : `st b ${bowler}`;
-                  case "HIT_WICKET": return `hit wicket b ${bowler}`;
-                  case "RETIRED_OUT": return "retired out";
-                  case "RETIRED_HURT": return "retired hurt";
-                  case "OVER_FENCE": return "over fence";
-                  default: return "out";
-                }
-              };
-              const teamAInnings = match.innings.filter((item) => item.battingTeamId === match.teamA.id).sort((a, b) => a.inningsNumber - b.inningsNumber);
-              const teamBInnings = match.innings.filter((item) => item.battingTeamId === match.teamB.id).sort((a, b) => a.inningsNumber - b.inningsNumber);
-              const scoreText = (inning: (typeof match.innings)[number] | undefined) => inning ? `${inning.totalRuns}/${inning.wickets}` : "-/-";
-              const orderedInnings = [...match.innings].sort((a, b) => a.inningsNumber - b.inningsNumber);
-              const finalInning = orderedInnings[orderedInnings.length - 1];
-              const targetInning = match.innings.find((item) => item.target != null) ?? finalInning;
-              const target = targetInning?.target ?? null;
-              const targetTeam = targetInning ? teamShortName(targetInning.battingTeamId) : "";
-              const matchStatus = String(match.status).toUpperCase();
-              const resultText = match.winner ? `${match.winner.shortName ?? match.winner.name} won` : matchStatus === "COMPLETED" ? "Match completed" : "In Progress";
-              const tossText = match.tossWinner ? `${match.tossWinner.shortName ?? match.tossWinner.name} won  -  elected to ${match.tossDecision === "BOWL" ? "bowl" : "bat"}` : "-";
-              const bowlingText = match.bowlingMode === "DOUBLE" ? "Double Bowler" : "Normal Bowling";
-              const displayInningsNumber = matchStatus === "COMPLETED" ? (orderedInnings.length || 1) : (orderedInnings[orderedInnings.length - 1]?.inningsNumber ?? 1);
-
-              return (
-                <>
-                  <div className="flex items-start justify-between gap-3">
-                    <div className="min-w-0 flex-1">
-                      <p className="text-xs font-bold uppercase tracking-wide text-slate-500">Match</p>
-                      <div className="mt-2 rounded-xl bg-slate-100 px-4 py-3">
-                        <h2 className="text-xl font-black">{selectedTournament?.name ?? "Cricket Match"}</h2>
-                      </div>
-                      <p className="mt-2 text-sm text-slate-500">Innings {displayInningsNumber} of {match.inningsPerMatch}</p>
-                    </div>
-                    <div className="scorecard-no-print flex shrink-0 gap-2 pt-5">
-                      <button type="button" onClick={exportScorecardPdf} className="h-9 rounded-lg bg-emerald-500 px-3 text-sm font-semibold text-slate-950 transition hover:bg-emerald-400">Export PDF</button>
-                      <button type="button" onClick={() => setScorecardMatch(null)} className="h-9 rounded-lg border border-slate-300 px-3 text-sm font-semibold text-slate-600">Close</button>
-                    </div>
-                  </div>
-
-                  <div className="mt-3 grid items-stretch overflow-hidden rounded-xl border border-slate-200 bg-white grid-cols-[auto_minmax(0,1fr)_auto_minmax(0,1fr)_auto]">
-                    <div className="flex items-center px-2 text-sm font-black text-blue-700 sm:px-3 sm:text-base">
-                      {teamShortName(match.teamA.id)}
-                    </div>
-
-                    <div className={`grid min-w-0 ${match.inningsPerMatch === 4 ? "grid-cols-2" : "grid-cols-1"}`}>
-                      {Array.from({ length: match.inningsPerMatch === 4 ? 2 : 1 }, (_, index) => {
-                        const inning = teamAInnings[index];
-                        return (
-                          <div key={`a-${index}`} className="border-l border-slate-100 px-2 py-2 text-center sm:px-3">
-                            <p className="truncate text-sm font-black sm:text-base">{scoreText(inning)}</p>
-                            <p className="text-[10px] text-slate-400">({index + 1})</p>
-                          </div>
-                        );
-                      })}
-                    </div>
-
-                    <div className="flex items-center justify-center px-2 text-xs font-black text-slate-400 sm:text-sm">VS</div>
-
-                    <div className={`grid min-w-0 ${match.inningsPerMatch === 4 ? "grid-cols-2" : "grid-cols-1"}`}>
-                      {Array.from({ length: match.inningsPerMatch === 4 ? 2 : 1 }, (_, index) => {
-                        const inning = teamBInnings[index];
-                        return (
-                          <div key={`b-${index}`} className="border-l border-slate-100 px-2 py-2 text-center sm:px-3">
-                            <p className="truncate text-sm font-black sm:text-base">{scoreText(inning)}</p>
-                            <p className="text-[10px] text-slate-400">({index + 1})</p>
-                          </div>
-                        );
-                      })}
-                    </div>
-
-                    <div className="flex items-center justify-end px-2 text-sm font-black text-emerald-700 sm:px-3 sm:text-base">
-                      {teamShortName(match.teamB.id)}
-                    </div>
-                  </div>
-
-                  <div className="mt-4 grid gap-3 md:grid-cols-2">
-                    <section><h3 className="text-sm font-black uppercase tracking-wide text-slate-500">Match Format</h3><dl className="mt-2 grid gap-y-2 text-sm"><div className="flex justify-between gap-4"><dt>Overs per Innings</dt><dd className="font-bold">{match.oversPerInnings}</dd></div><div className="flex justify-between gap-4"><dt>Innings</dt><dd className="font-bold">{match.inningsPerMatch}</dd></div></dl></section>
-                    <section><h3 className="sr-only">Match Details</h3><dl className="grid gap-y-2 text-sm"><div className="flex justify-between gap-4"><dt>Toss</dt><dd className="text-right font-bold">{tossText}</dd></div><div className="flex justify-between gap-4"><dt>Bowling</dt><dd className="text-right font-bold">{bowlingText}</dd></div></dl></section>
-                  </div>
-                  <div className={`mt-3 flex flex-col gap-2 rounded-xl px-3 py-2.5 text-sm font-bold sm:flex-row sm:items-center sm:justify-between ${matchStatus === "COMPLETED" ? "bg-slate-100 text-slate-700" : "bg-emerald-50 text-emerald-700"}`}><div className="flex items-center gap-3 whitespace-nowrap"><span>{matchStatus === "COMPLETED" ? "COMPLETED" : "LIVE"}</span><span>{resultText}</span></div>{target != null && <div className="text-xs font-semibold text-slate-700 sm:text-right">Target for <b>{targetTeam}</b> (batting last) in <b>inning {match.inningsPerMatch}</b>: <b className="text-emerald-700">{target} runs</b></div>}</div>
-
-        <div className="mt-5 space-y-5">
-                    {match.innings.map((i) => {
-                      const bat = new Map<string, { r: number; b: number; f: number; s: number; out: boolean; d: string }>();
-                      const bowl = new Map<string, { b: number; r: number; w: number }>();
-                      const fall: Array<{ p: string; score: number; over: string }> = [];
-                      let score = 0;
-                      for (const x of i.deliveries) {
-                        const a = bat.get(x.strikerId) || { r: 0, b: 0, f: 0, s: 0, out: false, d: "" };
-                        a.r += x.runsBat; if (x.isLegal) a.b++; if (x.runsBat === 4) a.f++; if (x.runsBat === 6) a.s++;
-                        if (x.isWicket && x.wicket?.dismissedPlayerId === x.strikerId) { a.out = true; a.d = dismissalText(x.wicket); fall.push({ p: playerName(x.strikerId), score: score + x.runsTotal, over: `${x.overNumber}.${x.ballNumber}` }); }
-                        bat.set(x.strikerId, a);
-                        const q = bowl.get(x.bowlerId) || { b: 0, r: 0, w: 0 }; if (x.isLegal) q.b++; q.r += x.runsTotal; if (x.isWicket && x.wicket?.bowlerId === x.bowlerId) q.w++; bowl.set(x.bowlerId, q); score += x.runsTotal;
-                      }
-                      return (
-                        <section key={i.id} className="rounded-xl border border-slate-200 bg-white p-3 sm:p-4">
-                          <div className="flex items-center justify-between border-b border-slate-200 pb-2"><div><p className="text-[10px] font-bold uppercase tracking-wide text-slate-400">Innings {i.inningsNumber}</p><h3 className="font-black">{teamName(i.battingTeamId)}</h3></div><b className="text-xl">{i.totalRuns}/{i.wickets}</b></div>
-                          <div className="mt-3 grid gap-4 lg:grid-cols-2">
-                            <div><div className="mb-1 grid grid-cols-[1fr_40px_40px_35px_35px_50px] text-[10px] font-bold uppercase text-slate-400"><span>Batter</span><span>R</span><span>B</span><span>4s</span><span>6s</span><span>SR</span></div>{Array.from(bat).map(([id, v]) => <div key={id} className="grid grid-cols-[1fr_40px_40px_35px_35px_50px] items-center py-1.5 text-xs"><div><b>{playerName(id)}{!v.out ? " *" : ""}</b><p className="whitespace-pre text-[9px] text-slate-400">{v.out ? v.d : "NOT OUT"}</p></div><b>{v.r}</b><span>{v.b}</span><span>{v.f}</span><span>{v.s}</span><span>{v.b ? (v.r / v.b * 100).toFixed(2) : "0.00"}</span></div>)}</div>
-                            <div><div className="mb-1 grid grid-cols-[1fr_40px_40px_40px_50px] text-[10px] font-bold uppercase text-slate-400"><span>Bowler</span><span>O</span><span>R</span><span>W</span><span>ECON</span></div>{Array.from(bowl).map(([id, v]) => <div key={id} className="grid grid-cols-[1fr_40px_40px_40px_50px] items-center py-1.5 text-xs"><b>{playerName(id)}</b><span>{Math.floor(v.b / 6)}.{v.b % 6}</span><span>{v.r}</span><span>{v.w}</span><span>{v.b ? (v.r / v.b * 6).toFixed(2) : "0.00"}</span></div>)}</div>
-                          </div>
-                          {fall.length > 0 && <div className="mt-3 border-t border-slate-200 pt-2"><p className="text-[10px] font-bold uppercase text-slate-400">Fall of Wickets</p><div className="mt-1 flex flex-wrap gap-1.5">{fall.map((f, n) => <span key={n} className="rounded-md bg-slate-100 px-2 py-1 text-[10px]"><b>{n + 1}-{f.score}</b> {f.p} ({f.over})</span>)}</div></div>}
-                          <div className="mt-3 border-t border-slate-200 pt-2"><p className="text-[10px] font-bold uppercase text-slate-400">Ball by Ball</p><div className="mt-1.5 flex flex-wrap gap-1">{i.deliveries.map((d) => <span key={d.id} title={`${playerName(d.bowlerId)} to ${playerName(d.strikerId)}`} className={`rounded-full px-2 py-1 text-[10px] font-bold ${d.isWicket ? "bg-red-500 text-white" : d.runsTotal === 4 || d.runsTotal === 6 ? "bg-blue-500 text-white" : "bg-slate-100 text-slate-600"}`}>{d.isWicket ? "W" : d.extraType ? `${d.runsTotal} ${d.extraType.replaceAll("_", " ")}` : d.runsBat}</span>)}</div></div>
-                        </section>
-                      );
-                    })}
-                  </div>
-                </>
-              );
-            })()}
-          </div>
-        </div>
-      )}
-      <CreateTournament />
-      <AddTeamModal />
-      {AddPlayerModal()}
-      <MaintenanceModal />
+      <MaintenanceModal
+        maintenanceMode={maintenanceMode}
+        maintenancePin={maintenancePin}
+        maintenanceError={maintenanceError}
+        setMaintenanceMode={setMaintenanceMode}
+        setMaintenancePin={setMaintenancePin}
+        setMaintenanceError={setMaintenanceError}
+        verifyMaintenancePin={verifyMaintenancePin}
+        tournaments={tournaments}
+        deletingTournamentId={deletingTournamentId}
+        deleteTournament={(tournamentId) => {
+          const tournament = tournaments.find((item) => item.id === tournamentId);
+          if (tournament) {
+            void deleteTournament(tournament);
+          }
+        }}
+      />
     </main>
   );
 }
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
