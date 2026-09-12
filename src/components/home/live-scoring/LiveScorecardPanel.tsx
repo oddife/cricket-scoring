@@ -1,5 +1,7 @@
 "use client";
 
+import { memo } from "react";
+
 type LiveScorecardPanelProps = {
   battingStats: any[];
   bowlingStats: any[];
@@ -20,7 +22,7 @@ type LiveScorecardPanelProps = {
   partnershipBalls: number;
 };
 
-export default function LiveScorecardPanel({
+function LiveScorecardPanel({
   battingStats,
   bowlingStats,
   liveStrikerId,
@@ -79,3 +81,17 @@ export default function LiveScorecardPanel({
     </div>
   );
 }
+
+const areEqual = (prev: LiveScorecardPanelProps, next: LiveScorecardPanelProps) =>
+  prev.battingStats === next.battingStats &&
+  prev.bowlingStats === next.bowlingStats &&
+  prev.liveStrikerId === next.liveStrikerId &&
+  prev.liveBowlerId === next.liveBowlerId &&
+  prev.extras === next.extras &&
+  prev.liveRuns === next.liveRuns &&
+  prev.liveWickets === next.liveWickets &&
+  prev.overDisplay === next.overDisplay &&
+  prev.partnershipRuns === next.partnershipRuns &&
+  prev.partnershipBalls === next.partnershipBalls;
+
+export default memo(LiveScorecardPanel, areEqual);
