@@ -2604,9 +2604,31 @@ setLiveBowlerId(refreshedCurrentBowlerId);
       const data = await response.json();
 
       if (!response.ok) {
-        throw new Error(
+        const serverError = String(
           data?.error || "Failed to record delivery.",
         );
+
+        if (
+          serverError.toLowerCase().includes("innings is not live") &&
+          liveInningsId
+        ) {
+          try {
+            await refreshLiveInnings(
+              liveInningsId,
+              createdMatchId,
+            );
+
+            setError("");
+            return;
+          } catch (refreshError) {
+            console.error(
+              "Failed to refresh completed innings:",
+              refreshError,
+            );
+          }
+        }
+
+        throw new Error(serverError);
       }
 
       const result = data.result ?? {};
@@ -4594,6 +4616,7 @@ er-emerald-500/50 hover:bg-slate-950 [color-scheme:dark]"
     </main>
   );
 }
+
 
 
 
