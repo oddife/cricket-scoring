@@ -2,6 +2,7 @@
 
 import CreateTournamentModal from "./home/CreateTournamentModal";
 import AddTeamModal from "./home/AddTeamModal";
+import MaintenancePinModal from "./home/MaintenancePinModal";
 
 import { useEffect, useMemo, useState } from "react";
 import LeaguePanel from "@/components/LeaguePanel";
@@ -6151,6 +6152,19 @@ r-emerald-500 [color-scheme:dark]"
         createTeam={createTeam}
       />
       {AddPlayerModal()}
+
+      <MaintenancePinModal
+        maintenancePin={maintenancePin}
+        maintenanceError={maintenanceError}
+        setMaintenancePin={setMaintenancePin}
+        close={() => {
+          setMaintenanceMode("CLOSED");
+          setMaintenancePin("");
+          setMaintenanceError("");
+        }}
+        verify={verifyMaintenancePin}
+      />
+
       <MaintenanceModal />
     </main>
   );
