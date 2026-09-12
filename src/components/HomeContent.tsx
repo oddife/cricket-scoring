@@ -3484,14 +3484,6 @@ if (needsAutomaticStrikeSwap && liveInningsId && !inningsComplete) {
                   </div>
                 </div>
 
-                {/* Now batting */}
-                <div id="live-players" className="grid gap-3 md:grid-cols-2">
-                  {[liveStriker, liveNonStriker].map((player, index) => {
-                    if (!player) return null;
-                    const stat = battingStats.find((item) => item.player.id === player.id);
-                    return <div key={player.id} className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm [color-scheme:dark]"><p className="text-xs font-bold uppercase text-slate-500">{index === 0 ? "Now Batting - Striker" : "Now Batting - Non-Striker"}</p><div className="mt-2 flex items-center justify-between gap-3"><div className="min-w-0"><p className="truncate text-lg font-black">{player.name}</p><p className="text-xs text-slate-500">{stat?.runs ?? 0}* ({stat?.balls ?? 0})</p></div><div className="text-right text-xs font-semibold text-slate-500">{stat?.fours ?? 0} Fours  -  {stat?.sixes ?? 0} Sixes</div></div></div>;
-                  })}
-                </div>
               </main>
 
               {/* Right rail */}
@@ -3570,6 +3562,9 @@ if (needsAutomaticStrikeSwap && liveInningsId && !inningsComplete) {
 </div>
 
 <LiveBattingPanel
+  liveStriker={liveStriker}
+  liveNonStriker={liveNonStriker}
+  battingStats={battingStats}
   nextBatsmen={nextBatsmen}
 />
 
