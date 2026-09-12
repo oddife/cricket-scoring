@@ -3088,11 +3088,7 @@ if (needsAutomaticStrikeSwap && liveInningsId && !inningsComplete) {
     );
     const recentDeliveries = [...liveDeliveries].reverse().slice(0, 7);
 
-    const dismissedIds = new Set(
-      liveDeliveries
-        .filter((delivery) => delivery.wicket)
-        .map((delivery) => delivery.wicket!.dismissedPlayerId),
-    );
+
 
     const activeBatters = new Set([
       liveStrikerId,
@@ -3105,11 +3101,17 @@ if (needsAutomaticStrikeSwap && liveInningsId && !inningsComplete) {
         !dismissedIds.has(player.id),
     );
 
+    const dismissedIds = new Set(
+      liveDeliveries
+        .filter((delivery) => delivery.wicket)
+        .map((delivery) => delivery.wicket!.dismissedPlayerId),
+    );
+
     const battingStats = liveScoringStats.batting.map((stat) => ({
       player: liveBattingPlayers.find((player) => player.id === stat.id)!,
       runs: stat.runs, balls: stat.balls, fours: stat.fours, sixes: stat.sixes,
       strikeRate: stat.balls ? ((stat.runs / stat.balls) * 100).toFixed(2) : "0.00",
-      dismissed: liveDeliveries.some((delivery) => delivery.wicket?.dismissedPlayerId === stat.id),
+      dismissed: dismissedIds.has(stat.id),
     }));
 
     const bowlingStats = liveScoringStats.bowling.map((stat) => ({
@@ -4569,6 +4571,7 @@ er-emerald-500/50 hover:bg-slate-950 [color-scheme:dark]"
     </main>
   );
 }
+
 
 
 
