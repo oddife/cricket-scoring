@@ -11,10 +11,11 @@ import ManagementModal from './home/ManagementModal';
 import LiveScoreHeader from "./home/live-scoring/LiveScoreHeader";
 import LiveScorecardPanel from "./home/live-scoring/LiveScorecardPanel";
 import LiveOverPanel from "./home/live-scoring/LiveOverPanel";
-import Header from "./home/Header";
 import { useEffect, useMemo, useState } from "react";
 import LeaguePanel from "@/components/LeaguePanel";
 import { calculateLiveScoringStats } from "@/lib/live-scoring/stats";
+import Header from "./home/Header";
+import ErrorBanner from "./home/ErrorBanner";
 
 type BowlingMode = "NORMAL" | "DOUBLE";
 type InningsMode = 2 | 4;
@@ -3792,26 +3793,6 @@ if (needsAutomaticStrikeSwap && liveInningsId && !inningsComplete) {
   }
 
   // ---------------------------------------------------------
-  // Header
-  // ---------------------------------------------------------
-
-
-  // ---------------------------------------------------------
-  // Error
-  // ---------------------------------------------------------
-
-  function ErrorBanner() {
-    if (!error) {
-      return null;
-    }
-
-    return (
-      <div className="mb-5 rounded-2xl border border-red-900/60 bg-red-950/40 px-4 py-3 text-sm text-red-300 [color-scheme:dark]">
-        {error}
-      </div>
-    );
-  }
-  // ---------------------------------------------------------
   // Main
   // ---------------------------------------------------------
 
@@ -3834,7 +3815,7 @@ if (needsAutomaticStrikeSwap && liveInningsId && !inningsComplete) {
           handleSecretLogoTap={handleSecretLogoTap}
         />
 
-        <ErrorBanner />
+        <ErrorBanner error={error} />
 
         <section className="flex-1">
           <div className={
