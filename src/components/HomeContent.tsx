@@ -11,14 +11,10 @@ import ManagementModal from './home/ManagementModal';
 import LiveScoreHeader from "./home/live-scoring/LiveScoreHeader";
 import LiveScorecardPanel from "./home/live-scoring/LiveScorecardPanel";
 import LiveOverPanel from "./home/live-scoring/LiveOverPanel";
-
+import Header from "./home/Header";
 import { useEffect, useMemo, useState } from "react";
 import LeaguePanel from "@/components/LeaguePanel";
-
-import AppLogo from "@/components/AppLogo";
-
 import { calculateLiveScoringStats } from "@/lib/live-scoring/stats";
-
 
 type BowlingMode = "NORMAL" | "DOUBLE";
 type InningsMode = 2 | 4;
@@ -3798,86 +3794,7 @@ if (needsAutomaticStrikeSwap && liveInningsId && !inningsComplete) {
   // ---------------------------------------------------------
   // Header
   // ---------------------------------------------------------
-function Header() {
-  if (pageMode === "LIVE_SCORING") {
-    return (
- <header className="mb-0">
-  <div className="flex h-16 items-center justify-between gap-4 rounded-xl border border-slate-700 bg-[#07182d] px-4 text-white shadow-sm sm:px-6">
-        <button
-            type="button"
-            onClick={goBackToTournaments}
-            aria-label={`${APP_NAME} - Back to tournaments`}
-          className="flex min-w-0 items-center gap-3 rounded-lg px-2 py-1 transition hover:bg-white/10 hover:ring-1 hover:ring-white/10 active:scale-[0.99]" 
-          >
-            <span className="flex h-10 w-10 shrink-0 items-center justify-center overflow-hidden rounded-full bg-white shadow-sm">
-              <AppLogo alt={APP_NAME} className="h-[135%] w-[135%] object-contain" />
-            </span>
 
-            <span className="truncate text-lg font-bold uppercase tracking-tight sm:text-xl">
-              {APP_NAME}
-            </span>
-          </button>
-
-          <div className="hidden min-w-0 flex-1 items-center justify-center gap-2 text-sm sm:flex">
-            <span className="max-w-[220px] truncate font-semibold">
-              {selectedTournament?.name ?? "Tournament"}
-            </span>
-            <span className="text-slate-500">Ãƒâ€šÃ‚Â·</span>
-            <span className="text-slate-300">
-              Live Match
-            </span>
-          </div>
-
-          <button
-            type="button"
-            onClick={() => void refreshLiveInnings()}
-            disabled={liveRefreshLoading}
-            className="shrink-0 rounded-lg border border-slate-600 bg-white/5 px-3 py-2 text-xs font-semibold text-slate-200 transition hover:border-slate-500 hover:bg-white/10 disabled:cursor-not-allowed disabled:opacity-50"
-          >
-            {liveRefreshLoading ? "Refreshing..." : "Refresh"}
-          </button>
-        </div>
-      </header>
-    );
-  }
-
-  return (
-    <header className="mb-8">
-      <div className="flex items-center justify-between gap-4">
-        <button
-          type="button"
-          aria-label={APP_NAME}
-          onClick={handleSecretLogoTap}
-          className="flex min-w-0 items-center gap-3 rounded-xl px-2 py-1 transition hover:bg-slate-900 active:scale-[0.99]"
-        >
-          <span className="flex h-12 w-12 shrink-0 items-center justify-center overflow-hidden rounded-2xl bg-white shadow-lg">
-            <AppLogo alt={APP_NAME} className="h-[135%] w-[135%] object-contain" />
-          </span>
-
-          <span className="min-w-0">
-            <span className="block truncate text-2xl font-bold tracking-tight sm:text-3xl">
-              {APP_NAME}
-            </span>
-
-            <span className="block text-sm text-slate-400">
-              {pageMode === "TOURNAMENTS"
-                ? "Tournaments"
-                : pageMode === "DASHBOARD"
-                  ? selectedTournament?.name || "Tournament"
-                  : pageMode === "MATCH_SETUP"
-                    ? "Match Setup"
-                    : pageMode === "PLAYER_SELECTION"
-                      ? "Player Selection"
-                      : pageMode === "OPENING_PLAYERS"
-                        ? "Opening Players"
-                        : "Live Scoring"}
-            </span>
-          </span>
-        </button>
-      </div>
-    </header>
-  );
-}
 
   // ---------------------------------------------------------
   // Error
@@ -3894,37 +3811,6 @@ function Header() {
       </div>
     );
   }
-
-  // ---------------------------------------------------------
-  // Tournament list
-  // ---------------------------------------------------------
-
-  // Add team modal
-  // ---------------------------------------------------------
-
-
-  // ---------------------------------------------------------
-  // Tournament dashboard
-  // ---------------------------------------------------------
-
-  
-
-  // ---------------------------------------------------------
-  // Player selection
-  // ---------------------------------------------------------
-
-
-  // Opening Players
-  // ---------------------------------------------------------
-
-
-
-  // ---------------------------------------------------------
-  // Match setup
-  // ---------------------------------------------------------
-
-  
-
   // ---------------------------------------------------------
   // Main
   // ---------------------------------------------------------
@@ -3938,7 +3824,15 @@ function Header() {
       : "mx-auto flex min-h-screen w-full max-w-5xl flex-col px-5 py-8 sm:px-8"
   }
 >
-        <Header />
+        <Header
+          appName={APP_NAME}
+          selectedTournament={selectedTournament}
+          pageMode={pageMode}
+          goBackToTournaments={goBackToTournaments}
+          liveRefreshLoading={liveRefreshLoading}
+          refreshLiveInnings={refreshLiveInnings}
+          handleSecretLogoTap={handleSecretLogoTap}
+        />
 
         <ErrorBanner />
 
