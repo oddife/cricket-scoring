@@ -7,6 +7,8 @@ import MatchSetup from "./home/MatchSetup";
 import PlayerSelection from "./home/PlayerSelection";
 import OpeningPlayers from "./home/OpeningPlayers";
 import LiveScoreHeader from "./home/live-scoring/LiveScoreHeader";
+import LiveScorecardPanel from "./home/live-scoring/LiveScorecardPanel";
+import LiveOverPanel from "./home/live-scoring/LiveOverPanel";
 
 import { useEffect, useMemo, useState } from "react";
 import LeaguePanel from "@/components/LeaguePanel";
@@ -3353,79 +3355,32 @@ if (needsAutomaticStrikeSwap && liveInningsId && !inningsComplete) {
                   </div>
                 </div>
 
-                {/* Batting + bowling scorecard */}
-                <div id="live-scorecard" className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm [color-scheme:dark]">
-                  <div className="grid gap-5 lg:grid-cols-[1.15fr_0.85fr]">
-                    <div>
-                      <div className="mb-3 grid grid-cols-[1fr_50px_50px_45px_45px_65px] gap-2 border-b border-slate-200 pb-2 text-xs font-bold uppercase text-slate-500 [color-scheme:dark]">
-                        <span>Batsmen</span><span>R</span><span>B</span><span>4s</span><span>6s</span><span>SR</span>
-                      </div>
-                      <div className="space-y-2">
-                        {battingStats.map((stat) => (
-                          <div key={stat.player.id} className={`grid grid-cols-[1fr_50px_50px_45px_45px_65px] items-center gap-2 rounded-lg px-2 py-2 text-sm ${stat.player.id === liveStrikerId ? "bg-emerald-50" : ""}`}>
-                            <div className="flex min-w-0 items-center gap-2">
-                              <span className={`flex h-7 w-7 shrink-0 items-center justify-center rounded-full text-xs font-bold text-white [color-scheme:dark] ${stat.dismissed ? "bg-red-600" : "bg-emerald-600"}`}>{stat.player.jerseyNumber ?? ""}</span>
-                              <div className="min-w-0">
-                                <span className="block truncate font-bold">{stat.player.name}{stat.player.id === liveStrikerId ? " *" : ""}</span>
-                                <span className="block truncate whitespace-pre text-[9px] text-slate-400">{stat.dismissed ? liveDismissalText(stat.player.id) : "NOT OUT"}</span>
-                              </div>
-                            </div>
-                            <b>{stat.runs}</b><span>{stat.balls}</span><span>{stat.fours}</span><span>{stat.sixes}</span><span>{stat.strikeRate}</span>
-                          </div>
-                        ))}
-                      </div>
-                    </div>
-
-                    <div>
-                      <div className="mb-3 grid grid-cols-[1fr_45px_45px_45px_45px_55px] gap-1 border-b border-slate-200 pb-2 text-xs font-bold uppercase text-slate-500 [color-scheme:dark]">
-                        <span>Bowler</span><span>O</span><span>M</span><span>R</span><span>W</span><span>ECON</span>
-                      </div>
-                      <div className="space-y-2">
-                        {bowlingStats.map((stat) => (
-                          <div key={stat.player.id} className={`grid grid-cols-[1fr_45px_45px_45px_45px_55px] items-center gap-1 rounded-lg px-2 py-2 text-sm ${stat.player.id === liveBowlerId ? "bg-blue-50" : ""}`}>
-                            <div className="truncate font-bold">{stat.player.name}</div>
-                            <span>{stat.overs}</span><span>0</span><span>{stat.runs}</span><span>{stat.wickets}</span><span>{stat.economy}</span>
-                          </div>
-                        ))}
-                      </div>
-                    </div>
-                  </div>
-
-                  <div className="mt-4 grid gap-4 border-t border-slate-200 pt-4 sm:grid-cols-3 [color-scheme:dark]">
-                    <div><p className="text-xs font-bold uppercase text-slate-500">Extras</p><p className="mt-1 text-sm font-semibold">{extras.total} (W {extras.wides}, NB {extras.noBalls}, B {extras.byes}, LB {extras.legByes})</p></div>
-                    <div><p className="text-xs font-bold uppercase text-slate-500">Total</p><p className="mt-1 text-lg font-black">{liveRuns} / {liveWickets} <span className="text-xs font-medium">({overDisplay} overs)</span></p></div>
-                    <div id="live-partnership"><p className="text-xs font-bold uppercase text-slate-500">Partnership</p><p className="mt-1 text-sm font-semibold">{partnershipRuns} runs off {partnershipBalls} balls</p></div>
-                  </div>
-                </div>
-
-                {/* Current over */}
-                <div id="live-overs" className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm [color-scheme:dark]">
-                  <div className="flex flex-wrap items-center justify-between gap-3">
-                    <div>
-                      <p className="text-xs font-bold uppercase tracking-wide text-slate-500">Current Over</p>
-                      <p className="mt-1 text-lg font-black">Over {currentOverNumber}</p>
-                    </div>
-                    <div className={`rounded-lg px-3 py-2 text-xs font-bold ${doubleMode ? "bg-blue-50 text-blue-700" : "bg-slate-100 text-slate-700"}`}>
-                      {doubleMode ? "DOUBLE BOWLER" : "NORMAL BOWLING"}
-                    </div>
-                    {oddFinalOver && <div className="rounded-lg bg-amber-100 px-3 py-2 text-xs font-bold text-amber-800">ODD FINAL OVER - ONE BOWLER</div>}
-                  </div>
-                  <div className="mt-3 flex flex-wrap gap-2">
-                    {currentOverDeliveries.map((delivery) => (
-                      <div key={delivery.id} className={`flex h-9 min-w-9 items-center justify-center rounded-full px-2 text-xs font-bold ${delivery.isWicket ? "bg-red-500 text-white" : delivery.runsTotal === 4 || delivery.runsTotal === 6 ? "bg-blue-100 text-blue-700" : "bg-slate-100 text-slate-800"}`} title={delivery.bowler.name}>
-                        {deliveryLabel(delivery)}
-                      </div>
-                    ))}
-                    {currentOverDeliveries.length === 0 && <span className="text-sm text-slate-400">No deliveries yet</span>}
-                  </div>
-                  {doubleMode && !oddFinalOver && (
-                    <div className="mt-3 grid grid-cols-2 gap-3 text-xs">
-                      <div className={`rounded-lg px-3 py-2 ${liveBowlerId === liveBowlerAId ? "bg-emerald-50 text-emerald-700" : "bg-slate-50 text-slate-600"}`}><b>{activeBowlerA?.name ?? "Bowler A"}</b><span className="float-right">{bowlerBallsThisOver(liveBowlerAId)} balls</span></div>
-                      <div className={`rounded-lg px-3 py-2 ${liveBowlerId === liveBowlerBId ? "bg-emerald-50 text-emerald-700" : "bg-slate-50 text-slate-600"}`}><b>{activeBowlerB?.name ?? "Bowler B"}</b><span className="float-right">{bowlerBallsThisOver(liveBowlerBId)} balls</span></div>
-                    </div>
-                  )}
-                </div>
-
+                <LiveScorecardPanel
+                  battingStats={battingStats}
+                  bowlingStats={bowlingStats}
+                  liveStrikerId={liveStrikerId}
+                  liveBowlerId={liveBowlerId}
+                  liveDismissalText={liveDismissalText}
+                  extras={extras}
+                  liveRuns={liveRuns}
+                  liveWickets={liveWickets}
+                  overDisplay={overDisplay}
+                  partnershipRuns={partnershipRuns}
+                  partnershipBalls={partnershipBalls}
+                />
+                <LiveOverPanel
+                  doubleMode={doubleMode}
+                  oddFinalOver={oddFinalOver}
+                  currentOverNumber={currentOverNumber}
+                  currentOverDeliveries={currentOverDeliveries}
+                  deliveryLabel={deliveryLabel}
+                  liveBowlerId={liveBowlerId}
+                  liveBowlerAId={liveBowlerAId}
+                  liveBowlerBId={liveBowlerBId}
+                  activeBowlerA={activeBowlerA}
+                  activeBowlerB={activeBowlerB}
+                  bowlerBallsThisOver={bowlerBallsThisOver}
+                />
                 <div className={`rounded-xl border p-3 shadow-sm transition-all [color-scheme:dark] ${liveNeedsManualSwap ? "border-amber-300 bg-amber-50 ring-2 ring-amber-200/80" : "border-slate-200 bg-white"}`}>
                   <div className="flex flex-wrap items-center gap-2">
                     <button type="button" onClick={() => void performUndo()} disabled={liveLoading || !liveUndoAvailable} className="h-11 rounded-lg border border-slate-300 bg-slate-100 px-4 font-bold text-slate-800 disabled:cursor-not-allowed disabled:opacity-40">Undo</button>
@@ -4614,6 +4569,10 @@ er-emerald-500/50 hover:bg-slate-950 [color-scheme:dark]"
     </main>
   );
 }
+
+
+
+
 
 
 
