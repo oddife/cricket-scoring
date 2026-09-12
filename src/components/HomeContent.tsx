@@ -17,6 +17,7 @@ import { calculateLiveScoringStats } from "@/lib/live-scoring/stats";
 import Header from "./home/Header";
 import ErrorBanner from "./home/ErrorBanner";
 import ScorecardModal from "./home/ScorecardModal";
+import LiveBowlingPanel from "./home/live-scoring/LiveBowlingPanel";
 
 type BowlingMode = "NORMAL" | "DOUBLE";
 type InningsMode = 2 | 4;
@@ -3493,52 +3494,131 @@ if (needsAutomaticStrikeSwap && liveInningsId && !inningsComplete) {
 
               {/* Right rail */}
               <aside className="space-y-3">
-                <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm [color-scheme:dark]">
-                  <p className="text-xs font-bold uppercase tracking-wide text-slate-600">Over View</p>
-                  <div className="mt-2 text-center text-4xl font-black">{completedOvers}</div>
-                  <div className="text-center text-sm text-slate-500">{overDisplay} overs</div>
-                  <div className="my-4 border-t border-slate-200" />
-                  <p className="text-xs font-bold uppercase tracking-wide text-slate-600">Bowlers This Over</p>
-                  <div className="mt-3 space-y-2">
-                    {[activeBowlerA, activeBowlerB].filter(Boolean).map((player, index) => <div key={player!.id} className="flex items-center justify-between text-sm"><span className="font-bold">{index === 0 ? "B1" : "B2"} &nbsp; {player!.name}</span><b>{bowlerBallsThisOver(player!.id)} balls</b></div>)}
-                  </div>
-                  <div className="my-4 border-t border-slate-200" />
-                  <p className="text-xs font-bold uppercase tracking-wide text-slate-600">Next Bowler</p>
-                  <p className="mt-2 text-sm font-bold">{liveBowler?.name ?? "Select next bowler"}</p>
-                </div>
+              <LiveBowlingPanel
+  activeBowlerA={activeBowlerA}
+  activeBowlerB={activeBowlerB}
+  liveBowler={liveBowler}
+  doubleMode={doubleMode}
+  oddFinalOver={oddFinalOver}
+  completedOvers={completedOvers}
+  overDisplay={overDisplay}
+  liveBowlerId={liveBowlerId}
+  liveInningsComplete={liveInningsComplete}
+  liveLegalBalls={liveLegalBalls}
+  liveCurrentOver={liveCurrentOver}
+  oversPerInnings={oversPerInnings}
+  liveBowlingPlayers={liveBowlingPlayers}
+  nextOverBowlerAId={nextOverBowlerAId}
+  nextOverBowlerBId={nextOverBowlerBId}
+  bowlerBallsThisOver={bowlerBallsThisOver}
+  bowlerDisabledForNextOver={bowlerDisabledForNextOver}
+  setNextOverBowlerAId={setNextOverBowlerAId}
+  setNextOverBowlerBId={setNextOverBowlerBId}
+  selectNextOverBowlers={selectNextOverBowlers}
+/>
 
-                <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm [color-scheme:dark]">
-                  <p className="text-xs font-bold uppercase tracking-wide text-slate-600">Recent Deliveries</p>
-                  <div className="mt-3 space-y-2">
-                    {recentDeliveries.map((delivery) => <div key={delivery.id} className="grid grid-cols-[45px_38px_1fr_30px] items-center gap-2 text-xs"><span className="text-slate-500">{delivery.overNumber}.{delivery.ballNumber}</span><span className={`flex h-7 w-7 items-center justify-center rounded-full font-bold ${delivery.isWicket ? "bg-red-500 text-white" : delivery.runsTotal === 4 || delivery.runsTotal === 6 ? "bg-blue-100 text-blue-700" : "bg-slate-100"}`}>{deliveryLabel(delivery)}</span><span className="truncate">{delivery.isWicket ? "Wicket" : delivery.runsTotal === 0 ? "Dot ball" : `${delivery.runsTotal} run${delivery.runsTotal === 1 ? "" : "s"}`}</span><span className="font-bold text-slate-500">{doubleMode ? (delivery.bowlerId === liveBowlerAId ? "B1" : "B2") : ""}</span></div>)}
-                    {recentDeliveries.length === 0 && <p className="text-sm text-slate-400">No deliveries yet.</p>}
-                  </div>
-                </div>
+<div className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm [color-scheme:dark]">
+  <p className="text-xs font-bold uppercase tracking-wide text-slate-600">
+    Recent Deliveries
+  </p>
+  <div className="mt-3 space-y-2">
+    {recentDeliveries.map((delivery) => (
+      <div
+        key={delivery.id}
+        className="grid grid-cols-[45px_38px_1fr_30px] items-center gap-2 text-xs"
+      >
+        <span className="text-slate-500">
+          {delivery.overNumber}.{delivery.ballNumber}
+        </span>
 
-                <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm [color-scheme:dark]">
-                  <p className="text-xs font-bold uppercase tracking-wide text-slate-600">Next Batsman</p>
-                  {nextBatsmen[0] ? <div className="mt-3 flex items-center gap-3"><span className="flex h-9 w-9 items-center justify-center rounded-full bg-emerald-600 text-xs font-bold text-white [color-scheme:dark]">{nextBatsmen[0].jerseyNumber ?? ""}</span><div><p className="font-bold">{nextBatsmen[0].name}</p><p className="text-xs text-slate-500">{nextBatsmen[0].battingStyle ?? "Batting"}</p></div></div> : <p className="mt-2 text-sm text-slate-400">No eligible batsman available.</p>}
-                </div>
+        <span
+          className={`flex h-7 w-7 items-center justify-center rounded-full font-bold ${
+            delivery.isWicket
+              ? "bg-red-500 text-white"
+              : delivery.runsTotal === 4 || delivery.runsTotal === 6
+                ? "bg-blue-100 text-blue-700"
+                : "bg-slate-100"
+          }`}
+        >
+          {deliveryLabel(delivery)}
+        </span>
 
-                <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm [color-scheme:dark]">
-                  <p className="text-xs font-bold uppercase tracking-wide text-slate-600">Fall of Wickets</p>
-                  <div className="mt-3 grid grid-cols-2 gap-3">
-                    {fallOfWickets.map((fall, index) => <div key={`${fall.player?.id ?? index}-${fall.over}`} className="border-r border-slate-200 pr-2 last:border-0 [color-scheme:dark]"><p className="font-bold">{index + 1}-{fall.score}</p><p className="truncate text-xs text-slate-500">{fall.player?.name ?? "Player"}</p><p className="text-xs text-slate-400">{fall.over} overs</p></div>)}
-                    {fallOfWickets.length === 0 && <p className="col-span-2 text-sm text-slate-400">No wickets.</p>}
-                  </div>
-                </div>
+        <span className="truncate">
+          {delivery.isWicket
+            ? "Wicket"
+            : delivery.runsTotal === 0
+              ? "Dot ball"
+              : `${delivery.runsTotal} run${delivery.runsTotal === 1 ? "" : "s"}`}
+        </span>
 
-                {(liveBowlerId === "" && !liveInningsComplete && (!doubleMode || liveLegalBalls % 12 === 0 || liveCurrentOver >= oversPerInnings)) && (
-                  <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm [color-scheme:dark]">
-                    <p className="text-xs font-bold uppercase tracking-wide text-slate-600">Select Next Over</p>
-                    <select value={nextOverBowlerAId} onChange={(event) => setNextOverBowlerAId(event.target.value)} className="mt-3 h-11 w-full rounded-lg border border-slate-700 bg-slate-950 px-3 text-white [color-scheme:dark] [color-scheme:dark]">
-                      <option value="">Select bowler</option>
-                      {liveBowlingPlayers.map((player) => <option key={player.id} value={player.id} disabled={bowlerDisabledForNextOver(player.id)}>{player.name}{bowlerDisabledForNextOver(player.id) ? " (cannot bowl consecutive over)" : ""}</option>)}
-                    </select>
-                    {doubleMode && !oddFinalOver && <select value={nextOverBowlerBId} onChange={(event) => setNextOverBowlerBId(event.target.value)} className="mt-2 h-11 w-full rounded-lg border border-slate-700 bg-slate-950 px-3 text-white [color-scheme:dark] [color-scheme:dark]"><option value="">Select second bowler</option>{liveBowlingPlayers.map((player) => <option key={player.id} value={player.id} disabled={player.id === nextOverBowlerAId || bowlerDisabledForNextOver(player.id)}>{player.name}</option>)}</select>}
-                    <button type="button" onClick={selectNextOverBowlers} className="mt-3 h-11 w-full rounded-lg bg-blue-600 font-bold text-white hover:bg-blue-700 [color-scheme:dark]">{oddFinalOver ? "Start Final Over" : "Start Next Over"}</button>
-                  </div>
-                )}
+        <span className="font-bold text-slate-500">
+          {doubleMode
+            ? delivery.bowlerId === liveBowlerAId
+              ? "B1"
+              : "B2"
+            : ""}
+        </span>
+      </div>
+    ))}
+
+    {recentDeliveries.length === 0 && (
+      <p className="text-sm text-slate-400">No deliveries yet.</p>
+    )}
+  </div>
+</div>
+
+<div className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm [color-scheme:dark]">
+  <p className="text-xs font-bold uppercase tracking-wide text-slate-600">
+    Next Batsman
+  </p>
+  {nextBatsmen[0] ? (
+    <div className="mt-3 flex items-center gap-3">
+      <span className="flex h-9 w-9 items-center justify-center rounded-full bg-emerald-600 text-xs font-bold text-white [color-scheme:dark]">
+        {nextBatsmen[0].jerseyNumber ?? ""}
+      </span>
+      <div>
+        <p className="font-bold">{nextBatsmen[0].name}</p>
+        <p className="text-xs text-slate-500">
+          {nextBatsmen[0].battingStyle ?? "Batting"}
+        </p>
+      </div>
+    </div>
+  ) : (
+    <p className="mt-2 text-sm text-slate-400">
+      No eligible batsman available.
+    </p>
+  )}
+</div>
+
+<div className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm [color-scheme:dark]">
+  <p className="text-xs font-bold uppercase tracking-wide text-slate-600">
+    Fall of Wickets
+  </p>
+  <div className="mt-3 grid grid-cols-2 gap-3">
+    {fallOfWickets.map((fall, index) => (
+      <div
+        key={`${fall.player?.id ?? index}-${fall.over}`}
+        className="border-r border-slate-200 pr-2 last:border-0 [color-scheme:dark]"
+      >
+        <p className="font-bold">
+          {index + 1}-{fall.score}
+        </p>
+        <p className="truncate text-xs text-slate-500">
+          {fall.player?.name ?? "Player"}
+        </p>
+        <p className="text-xs text-slate-400">
+          {fall.over} overs
+        </p>
+      </div>
+    ))}
+
+    {fallOfWickets.length === 0 && (
+      <p className="col-span-2 text-sm text-slate-400">
+        No wickets.
+      </p>
+    )}
+  </div>
+</div>
               </aside>
             </div>
 
