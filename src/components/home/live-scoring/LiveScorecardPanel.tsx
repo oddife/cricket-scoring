@@ -34,116 +34,47 @@ export default function LiveScorecardPanel({
   partnershipBalls,
 }: LiveScorecardPanelProps) {
   return (
-    <div className="space-y-4">
-      <div className="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
-        <div className="border-b border-slate-200 bg-slate-50 px-4 py-3">
-          <h3 className="text-sm font-semibold text-slate-900">Batting</h3>
-        </div>
-        <div className="overflow-x-auto">
-          <table className="min-w-full text-sm">
-            <thead className="bg-slate-50 text-left text-xs uppercase tracking-wide text-slate-500">
-              <tr>
-                <th className="px-4 py-2 font-medium">Batter</th>
-                <th className="px-3 py-2 text-right font-medium">R</th>
-                <th className="px-3 py-2 text-right font-medium">B</th>
-                <th className="px-3 py-2 text-right font-medium">4s</th>
-                <th className="px-3 py-2 text-right font-medium">6s</th>
-                <th className="px-4 py-2 text-right font-medium">SR</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-slate-100">
-              {battingStats.map((player) => {
-                const isStriker = player.playerId === liveStrikerId;
-                const strikeRate = player.balls
-                  ? ((player.runs / player.balls) * 100).toFixed(1)
-                  : "0.0";
-                return (
-                  <tr key={player.playerId} className={isStriker ? "bg-emerald-50" : ""}>
-                    <td className="px-4 py-3 font-medium text-slate-900">
-                      <div className="flex items-center gap-2">
-                        {isStriker && <span className="text-emerald-600">●</span>}
-                        <span>{player.playerName}</span>
-                        {liveDismissalText(player.playerId) && (
-                          <span className="text-xs font-normal text-slate-500">
-                            {liveDismissalText(player.playerId)}
-                          </span>
-                        )}
-                      </div>
-                    </td>
-                    <td className="px-3 py-3 text-right font-semibold text-slate-900">{player.runs}</td>
-                    <td className="px-3 py-3 text-right text-slate-600">{player.balls}</td>
-                    <td className="px-3 py-3 text-right text-slate-600">{player.fours}</td>
-                    <td className="px-3 py-3 text-right text-slate-600">{player.sixes}</td>
-                    <td className="px-4 py-3 text-right text-slate-600">{strikeRate}</td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
-        </div>
-      </div>
-
-      <div className="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
-        <div className="border-b border-slate-200 bg-slate-50 px-4 py-3">
-          <h3 className="text-sm font-semibold text-slate-900">Bowling</h3>
-        </div>
-        <div className="overflow-x-auto">
-          <table className="min-w-full text-sm">
-            <thead className="bg-slate-50 text-left text-xs uppercase tracking-wide text-slate-500">
-              <tr>
-                <th className="px-4 py-2 font-medium">Bowler</th>
-                <th className="px-3 py-2 text-right font-medium">O</th>
-                <th className="px-3 py-2 text-right font-medium">M</th>
-                <th className="px-3 py-2 text-right font-medium">R</th>
-                <th className="px-3 py-2 text-right font-medium">W</th>
-                <th className="px-4 py-2 text-right font-medium">Econ</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-slate-100">
-              {bowlingStats.map((player) => {
-                const isBowler = player.playerId === liveBowlerId;
-                const economy = player.balls
-                  ? ((player.runsConceded / (player.balls / 6))).toFixed(2)
-                  : "0.00";
-                return (
-                  <tr key={player.playerId} className={isBowler ? "bg-emerald-50" : ""}>
-                    <td className="px-4 py-3 font-medium text-slate-900">
-                      <div className="flex items-center gap-2">
-                        {isBowler && <span className="text-emerald-600">●</span>}
-                        <span>{player.playerName}</span>
-                      </div>
-                    </td>
-                    <td className="px-3 py-3 text-right text-slate-600">{player.overs}</td>
-                    <td className="px-3 py-3 text-right text-slate-600">{player.maidens}</td>
-                    <td className="px-3 py-3 text-right text-slate-600">{player.runsConceded}</td>
-                    <td className="px-3 py-3 text-right font-semibold text-slate-900">{player.wickets}</td>
-                    <td className="px-4 py-3 text-right text-slate-600">{economy}</td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
-        </div>
-      </div>
-
-      <div className="grid gap-4 sm:grid-cols-3">
-        <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
-          <div className="text-xs font-medium uppercase tracking-wide text-slate-500">Extras</div>
-          <div className="mt-1 text-lg font-semibold text-slate-900">{extras.total}</div>
-          <div className="mt-2 text-xs text-slate-500">
-            W {extras.wides} · NB {extras.noBalls} · B {extras.byes} · LB {extras.legByes}
+    <div id="live-scorecard" className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm [color-scheme:dark]">
+      <div className="grid gap-5 lg:grid-cols-[1.15fr_0.85fr]">
+        <div>
+          <div className="mb-3 grid grid-cols-[1fr_50px_50px_45px_45px_65px] gap-2 border-b border-slate-200 pb-2 text-xs font-bold uppercase text-slate-500 [color-scheme:dark]">
+            <span>Batsmen</span><span>R</span><span>B</span><span>4s</span><span>6s</span><span>SR</span>
+          </div>
+          <div className="space-y-2">
+            {battingStats.map((stat) => (
+              <div key={stat.player.id} className={`grid grid-cols-[1fr_50px_50px_45px_45px_65px] items-center gap-2 rounded-lg px-2 py-2 text-sm ${stat.player.id === liveStrikerId ? "bg-emerald-50" : ""}`}>
+                <div className="flex min-w-0 items-center gap-2">
+                  <span className={`flex h-7 w-7 shrink-0 items-center justify-center rounded-full text-xs font-bold text-white [color-scheme:dark] ${stat.dismissed ? "bg-red-600" : "bg-emerald-600"}`}>{stat.player.jerseyNumber ?? ""}</span>
+                  <div className="min-w-0">
+                    <span className="block truncate font-bold">{stat.player.name}{stat.player.id === liveStrikerId ? " *" : ""}</span>
+                    <span className="block truncate whitespace-pre text-[9px] text-slate-400">{stat.dismissed ? liveDismissalText(stat.player.id) : "NOT OUT"}</span>
+                  </div>
+                </div>
+                <b>{stat.runs}</b><span>{stat.balls}</span><span>{stat.fours}</span><span>{stat.sixes}</span><span>{stat.strikeRate}</span>
+              </div>
+            ))}
           </div>
         </div>
-        <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
-          <div className="text-xs font-medium uppercase tracking-wide text-slate-500">Total</div>
-          <div className="mt-1 text-lg font-semibold text-slate-900">{liveRuns}/{liveWickets}</div>
-          <div className="mt-2 text-xs text-slate-500">{overDisplay} overs</div>
+
+        <div>
+          <div className="mb-3 grid grid-cols-[1fr_45px_45px_45px_45px_55px] gap-1 border-b border-slate-200 pb-2 text-xs font-bold uppercase text-slate-500 [color-scheme:dark]">
+            <span>Bowler</span><span>O</span><span>M</span><span>R</span><span>W</span><span>ECON</span>
+          </div>
+          <div className="space-y-2">
+            {bowlingStats.map((stat) => (
+              <div key={stat.player.id} className={`grid grid-cols-[1fr_45px_45px_45px_45px_55px] items-center gap-1 rounded-lg px-2 py-2 text-sm ${stat.player.id === liveBowlerId ? "bg-blue-50" : ""}`}>
+                <div className="truncate font-bold">{stat.player.name}</div>
+                <span>{stat.overs}</span><span>0</span><span>{stat.runs}</span><span>{stat.wickets}</span><span>{stat.economy}</span>
+              </div>
+            ))}
+          </div>
         </div>
-        <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
-          <div className="text-xs font-medium uppercase tracking-wide text-slate-500">Partnership</div>
-          <div className="mt-1 text-lg font-semibold text-slate-900">{partnershipRuns}</div>
-          <div className="mt-2 text-xs text-slate-500">{partnershipBalls} balls</div>
-        </div>
+      </div>
+
+      <div className="mt-4 grid gap-4 border-t border-slate-200 pt-4 sm:grid-cols-3 [color-scheme:dark]">
+        <div><p className="text-xs font-bold uppercase text-slate-500">Extras</p><p className="mt-1 text-sm font-semibold">{extras.total} (W {extras.wides}, NB {extras.noBalls}, B {extras.byes}, LB {extras.legByes})</p></div>
+        <div><p className="text-xs font-bold uppercase text-slate-500">Total</p><p className="mt-1 text-lg font-black">{liveRuns} / {liveWickets} <span className="text-xs font-medium">({overDisplay} overs)</span></p></div>
+        <div id="live-partnership"><p className="text-xs font-bold uppercase text-slate-500">Partnership</p><p className="mt-1 text-sm font-semibold">{partnershipRuns} runs off {partnershipBalls} balls</p></div>
       </div>
     </div>
   );
