@@ -1,8 +1,33 @@
 "use client";
 
-import React from "react";
 
-export default function CreateTournamentModal() {
+type CreateTournamentModalProps = {
+  showCreateTournament: boolean;
+  loadingCreate: boolean;
+  tournamentName: string;
+  tournamentSeason: string;
+  tournamentFormat: string;
+  setTournamentName: (value: string) => void;
+  setTournamentSeason: (value: string) => void;
+  setTournamentFormat: (value: string) => void;
+  setShowCreateTournament: (value: boolean) => void;
+  setError: (value: string) => void;
+  createTournament: () => void;
+};
+
+export default function CreateTournamentModal({
+  showCreateTournament,
+  loadingCreate,
+  tournamentName,
+  tournamentSeason,
+  tournamentFormat,
+  setTournamentName,
+  setTournamentSeason,
+  setTournamentFormat,
+  setShowCreateTournament,
+  setError,
+  createTournament,
+}: CreateTournamentModalProps) {
     if (!showCreateTournament) {
       return null;
     }
