@@ -473,14 +473,36 @@ const [resumingMatchId, setResumingMatchId] =
       setTournaments(Array.isArray(data) ? data : []);
 
       return Array.isArray(data) ? data : [];
-    } catch (err) {
+        } catch (err) {
       console.error(err);
 
-      setError(
-        "Unable to load tournaments. Make sure the server is running.",
-      );
+      const message =
+        err instanceof Error
+          ? err.message
+          : "Failed to record delivery.";
 
-      return [];
+      // The user may tap a scoring button after the final ball has
+      // already completed the innings. The backend correctly rejects
+      // that extra input, but the scorer should show the completion
+      // screen instead of displaying "Innings is not live".
+      if (message === "Innings is not live." && liveInningsId) {
+        try {
+          await refreshLiveInnings(
+            liveInningsId,
+            createdMatchId,
+          );
+
+          setError("");
+          return;
+        } catch (refreshError) {
+          console.error(
+            "Failed to refresh completed innings:",
+            refreshError,
+          );
+        }
+      }
+
+      setError(message);
     } finally {
       setLoadingTournaments(false);
     }
@@ -3090,6 +3112,12 @@ if (needsAutomaticStrikeSwap && liveInningsId && !inningsComplete) {
 
 
 
+    const dismissedIds = new Set(
+      liveDeliveries
+        .filter((delivery) => delivery.wicket)
+        .map((delivery) => delivery.wicket!.dismissedPlayerId),
+    );
+
     const activeBatters = new Set([
       liveStrikerId,
       liveNonStrikerId,
@@ -3101,11 +3129,6 @@ if (needsAutomaticStrikeSwap && liveInningsId && !inningsComplete) {
         !dismissedIds.has(player.id),
     );
 
-    const dismissedIds = new Set(
-      liveDeliveries
-        .filter((delivery) => delivery.wicket)
-        .map((delivery) => delivery.wicket!.dismissedPlayerId),
-    );
 
     const battingStats = liveScoringStats.batting.map((stat) => ({
       player: liveBattingPlayers.find((player) => player.id === stat.id)!,
@@ -4571,6 +4594,7 @@ er-emerald-500/50 hover:bg-slate-950 [color-scheme:dark]"
     </main>
   );
 }
+
 
 
 
